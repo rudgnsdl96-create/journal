@@ -264,76 +264,25 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 <script>
 "use strict";
 /* ---------------- capability: sample (AI) ---------------- */
+const APP_VERSION="2026-09-10-groq";
 let SAMPLE=null;
 (async()=>{ try{ if(window.claude&&claude.use){ SAMPLE=await claude.use("sample"); } }catch(e){} if(curTab==="today")renderToday(); })();
 function getApiKey(){try{return (localStorage.getItem("endiary.apikey")||"").trim();}catch(e){return"";}}
 function getKey(p){try{return (localStorage.getItem("endiary.key."+p)||"").trim();}catch(e){return "";}}
 function setKey(p,v){try{localStorage.setItem("endiary.key."+p,(v||"").trim());}catch(e){}}
 function getModelFor(p){try{return (localStorage.getItem("endiary.model."+p)||"").trim();}catch(e){return "";}}
-const GEMINI_MODELS=["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-flash","gemini-2.0-flash-lite","gemini-1.5-flash","gemini-1.5-flash-8b"];
-const GEMINI_DEFAULT="gemini-2.0-flash";
-const GEMINI_LABELS={
- "gemini-2.5-pro":"2.5 Pro — 가장 자세함 (느림·한도 큼)",
- "gemini-2.5-flash":"2.5 Flash — 자세함",
- "gemini-2.0-flash":"2.0 Flash — 기본·빠름",
- "gemini-2.0-flash-lite":"2.0 Flash-Lite — 가장 덜 막힘",
- "gemini-1.5-flash":"1.5 Flash",
- "gemini-1.5-flash-8b":"1.5 Flash-8B — 초경량"
+const GROQ_MODELS=["llama-3.3-70b-versatile","llama-3.1-8b-instant","openai/gpt-oss-20b"];
+const GROQ_DEFAULT="llama-3.3-70b-versatile";
+const GROQ_LABELS={
+ "llama-3.3-70b-versatile":"Llama 3.3 70B — 품질 좋음 (기본)",
+ "llama-3.1-8b-instant":"Llama 3.1 8B — 빠름·한도 큼",
+ "openai/gpt-oss-20b":"GPT-OSS 20B — 대체용"
 };
-function geminiLadder(){
-  const start=getModelFor("gemini")||GEMINI_DEFAULT;
-  const i=GEMINI_MODELS.indexOf(start);
-  if(i<0) return [start, ...GEMINI_MODELS.slice(GEMINI_MODELS.indexOf(GEMINI_DEFAULT))];
-  return GEMINI_MODELS.slice(i);
-}
-(function migrateKey(){try{const ok=(localStorage.getItem("endiary.apikey")||"").trim();const pv=localStorage.getItem("endiary.provider");if(ok&&(pv==="gemini"||pv==="openai")&&!getKey(pv)){setKey(pv,ok);}}catch(e){}})();
-function getProvider(){try{return localStorage.getItem("endiary.provider")||"gemini";}catch(e){return "gemini";}}
-function defModel(p){return p==="openai"?"gpt-4o-mini":p==="gemini"?"gemini-2.0-flash":"claude-3-5-sonnet-20241022";}
-function getModel(){try{const m=(localStorage.getItem("endiary.model")||"").trim();return m||defModel(getProvider());}catch(e){return defModel(getProvider());}}
-function aiOn(){return !!SAMPLE || !!getKey("gemini") || !!getApiKey();}
+function aiOn(){return !!SAMPLE || !!getKey("groq");}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function _remoteJSON(prompt,key,tier){
-  const provider=getProvider(), model=getModel();
-  const instr=prompt+"\n\nReturn ONLY the JSON object. No markdown fences, no extra text.";
-  async function readErr(res){let m="";try{const eb=await res.json();m=(eb.error&&eb.error.message)||"";}catch(_){}
-    const retryable=res.status===429||res.status===503||res.status===500||/high demand|overload|unavailable|try again|rate|quota/i.test(m);
-    return {code:res.status===429?"rate_limited":"http_"+res.status,message:m,retryable};}
-  let txt="";
-  if(provider==="openai"){
-    const res=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+key},body:JSON.stringify({model,messages:[{role:"user",content:instr}],response_format:{type:"json_object"},max_tokens:1600})});
-    if(!res.ok) throw await readErr(res);
-    const d=await res.json(); txt=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||"";
-  }else if(provider==="gemini"){
-    const cands=[model,"gemini-2.0-flash","gemini-1.5-flash","gemini-flash-latest"].filter((m,i,a)=>m&&a.indexOf(m)===i);
-    let ok=null,lastErr=null;
-    for(const mdl of cands){
-      const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(mdl)+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:instr}]}]})});
-      if(res.ok){ok=res;break;}
-      lastErr=await readErr(res);
-      if(res.status!==404) break;
-    }
-    if(!ok) throw (lastErr||{code:"error"});
-    const d=await ok.json(); txt=(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]&&d.candidates[0].content.parts[0].text)||"";
-  }else{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model,max_tokens:1600,messages:[{role:"user",content:instr}]})});
-    if(!res.ok) throw await readErr(res);
-    const d=await res.json(); txt=(d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
-  }
-  txt=(txt||"").trim().replace(/^```json/i,"").replace(/^```/,"").replace(/```$/,"").trim();
-  const s=txt.indexOf("{"),e=txt.lastIndexOf("}"); if(s>=0&&e>=0)txt=txt.slice(s,e+1);
-  if(!txt) throw {code:"empty",message:"AI가 빈 응답을 반환했어요"};
-  return JSON.parse(txt);
-}
 async function askJSON(prompt,tier){
   if(SAMPLE){ return await SAMPLE.json(prompt,{modelTier:tier||"default",cache:false}); }
-  const key=getApiKey(); if(!key) throw {code:"no_ai"};
-  let lastErr=null;
-  for(let attempt=0;attempt<3;attempt++){
-    if(attempt>0) await sleep(1000*attempt+500);
-    try{ return await _remoteJSON(prompt,key,tier); }
-    catch(err){ lastErr=err; if(!err||!err.retryable) throw err; }
-  }
-  throw lastErr;
+  throw {code:"no_ai"};
 }
 
 /* ---------------- storage ---------------- */
@@ -421,78 +370,53 @@ Rules: 'answer' is the 0-based index of the correct option. Apply ALL fixes (inc
 Diary:
 """${text}"""`;
 }
-/* Gemini call: start at selected model, 4 tries each, then drop to next model */
-async function callProvider(provider,key,prompt){
+/* Groq call (OpenAI-compatible): one model, 5s wait, up to 10 retries */
+async function callGroq(key,prompt){
   const instr=prompt+"\n\nReturn ONLY the JSON object. No markdown fences, no extra text.";
-  const retryable=(status,m)=>status===429||status===503||status===500||/high demand|overload|unavailable|try again|rate|quota/i.test(m||"");
-  function retryAfterFrom(res,body){
-    let sec=parseFloat(res.headers&&res.headers.get&&res.headers.get("retry-after"))||0;
-    try{ const dets=body&&body.error&&body.error.details; if(dets&&dets.length){ for(const d of dets){ if(d.retryDelay){ const s=parseFloat(String(d.retryDelay)); if(s>sec)sec=s; } } } }catch(_){}
-    return sec;
-  }
+  const model=getModelFor("groq")||GROQ_DEFAULT;
+  const retryable=(status,m)=>status===429||status===503||status===500||status===502||/rate|overload|unavailable|try again|capacity|busy/i.test(m||"");
+  function retryAfterFrom(res){ return parseFloat(res.headers&&res.headers.get&&res.headers.get("retry-after"))||0; }
   const loaderShown=()=>{try{return $("#loader").classList.contains("show");}catch(_){return false;}};
   const setStatus=(t)=>{ if(loaderShown()){try{$("#loaderMsg").textContent=t;}catch(_){}} };
-  function shortName(m){ return (m||"").replace("gemini-","").replace("-"," "); }
   function parse(txt){
     txt=(txt||"").trim().replace(/^```json/i,"").replace(/^```/,"").replace(/```$/,"").trim();
     const s=txt.indexOf("{"),e=txt.lastIndexOf("}"); if(s>=0&&e>=0)txt=txt.slice(s,e+1);
     if(!txt) throw {code:"empty",message:"빈 응답",retryable:true};
     return JSON.parse(txt);
   }
-  const ladder=geminiLadder();
-  const startT=Date.now(), DEADLINE=95000;
-  async function countdown(model,ms){
-    let s=Math.ceil(ms/1000);
-    while(s>0){ setStatus(`${shortName(model)} · ${s}초 뒤 자동 재시도… (무료 한도 회복 대기)`); await sleep(1000); s--; }
-    setStatus("검사하는 중…");
-  }
+  const MAX=10;
   let lastErr=null;
-  for(let mi=0; mi<ladder.length; mi++){
-    const model=ladder[mi];
-    if(mi>0) setStatus(`${shortName(model)} 모델로 전환…`);
-    let next=false;
-    for(let a=0;a<3 && !next;a++){
-      let res=null;
-      try{ res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:instr}]}]})}); }
-      catch(netErr){ lastErr={code:"network",message:"네트워크 오류",retryable:true,status:0}; }
-      if(res&&res.ok){
-        const d=await res.json();
-        const txt=(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]&&d.candidates[0].content.parts[0].text)||"";
-        try{ return parse(txt); }catch(pe){ lastErr={code:"parse",message:"응답 파싱 실패",retryable:true,status:0}; }
-      }else if(res){
-        let b=null; try{ b=await res.json(); }catch(_){}
-        const m=(b&&b.error&&b.error.message)||"";
-        lastErr={code:"http_"+res.status,message:m,retryable:retryable(res.status,m),retryAfter:retryAfterFrom(res,b),status:res.status};
-        if(res.status===404){ next=true; break; }        // 이 모델 없음 → 다음 모델
-        if(!lastErr.retryable) throw lastErr;             // 키/요청 오류 → 중단
-      }
-      if(a<2){                                             // 마지막 시도 뒤에는 대기 없이 다음 모델
-        const ra=(lastErr&&lastErr.retryAfter)||0;
-        let waitMs = ra>0 ? ra*1000+1200 : ((lastErr&&lastErr.status===429) ? (12000+a*13000) : (2500+a*3500));
-        waitMs=Math.min(waitMs,45000);
-        if(Date.now()-startT+waitMs>DEADLINE){ next=true; break; }
-        await countdown(model,waitMs);
-      }
+  for(let a=0;a<MAX;a++){
+    if(a>0){
+      const ra=(lastErr&&lastErr.retryAfter)||0;
+      const waitMs=Math.min(Math.max(5000, ra*1000+500), 30000);
+      let s=Math.ceil(waitMs/1000);
+      while(s>0){ setStatus(`${s}초 뒤 재시도… (${a}/${MAX-1})`); await sleep(1000); s--; }
+      setStatus("검사하는 중…");
     }
-    if(Date.now()-startT>DEADLINE) break;
+    let res=null;
+    try{
+      res=await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+key},body:JSON.stringify({model,messages:[{role:"user",content:instr}],temperature:0.3,max_tokens:2000})});
+    }catch(netErr){ lastErr={code:"network",message:"네트워크 오류(브라우저 차단 가능)",retryable:true,status:0}; continue; }
+    if(res.ok){
+      const d=await res.json();
+      const txt=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||"";
+      try{ return parse(txt); }catch(pe){ lastErr={code:"parse",message:"응답 파싱 실패",retryable:true,status:0}; continue; }
+    }
+    let b=null; try{ b=await res.json(); }catch(_){}
+    const m=(b&&b.error&&b.error.message)||"";
+    lastErr={code:"http_"+res.status, message:m, retryable:retryable(res.status,m), retryAfter:retryAfterFrom(res), status:res.status};
+    if(!lastErr.retryable) throw lastErr;   // 401(키오류)·404(모델) 등 → 즉시 중단
   }
   throw lastErr||{code:"error"};
 }
-/* score: more detailed & longer = higher */
-function scoreOf(r){
-  if(!r||typeof r.corrected!=="string") return -1;
-  const corr=Array.isArray(r.corrections)?r.corrections:[];
-  const quiz=Array.isArray(r.quiz)?r.quiz:[];
-  let expl=0; corr.forEach(c=>expl+=((c&&c.explanation)||"").length); quiz.forEach(q=>expl+=((q&&q.explain)||"").length);
-  return corr.length*3 + quiz.length*2 + Math.min(expl,800)/50 + Math.min((r.corrected||"").length,900)/200;
-}
 async function aiCheckBest(text){
   const prompt=checkPrompt(text);
-  const gkey=getKey("gemini");
-  if(gkey){
+  const gk=getKey("groq");
+  if(gk){
     const t=(performance.now?performance.now():Date.now());
-    const r=await callProvider("gemini",gkey,prompt);
-    return {name:"Gemini",r,ms:(performance.now?performance.now():Date.now())-t};
+    const r=await callGroq(gk,prompt);
+    return {name:"Groq",r,ms:(performance.now?performance.now():Date.now())-t};
   }
   if(SAMPLE) return {name:"Claude",r:await askJSON(prompt,"default"),ms:0};
   throw {code:"no_ai"};
@@ -504,9 +428,8 @@ async function aiDefine(word,ctx){
 Word: "${word}"
 Context: "${(ctx||"").slice(0,200)}"`;
   if(SAMPLE) return await askJSON(prompt,"quick");
-  const gkey=getKey("gemini");
-  if(gkey) return await callProvider("gemini",gkey,prompt);
-  if(getApiKey()) return await askJSON(prompt,"quick");
+  const gk=getKey("groq");
+  if(gk) return await callGroq(gk,prompt);
   throw {code:"no_ai"};
 }
 
@@ -578,11 +501,14 @@ async function doCheck(){
   }catch(err){
     hideLoader();
     let m="검사에 실패했어요.";
-    const rate = err && (err.code==="rate_limited" || err.code==="http_429" || err.code==="http_503" || /rate|quota|high demand|overload/i.test(err.message||""));
+    const rate = err && (err.code==="rate_limited" || err.code==="http_429" || err.code==="http_503" || err.code==="http_502" || /rate|overload|capacity|busy/i.test(err.message||""));
     if(err){
-      if(err.code==="no_ai")m="AI 설정에서 Gemini 키를 먼저 입력하세요 (수집 → 데이터 → AI 설정).";
-      else if(rate)m="요청이 많아요(Gemini 무료 한도). 30~60초 뒤 다시 시도하거나, AI 설정에서 모델을 gemini-2.0-flash-lite로 바꿔보세요.";
-      else if(err.message)m="검사 실패: "+String(err.message).slice(0,140);
+      if(err.code==="no_ai")m="AI 설정에서 Groq 키를 먼저 입력하세요 (수집 → 데이터 → AI 설정).";
+      else if(err.code==="http_401")m="Groq 키가 올바르지 않아요. AI 설정에서 키를 다시 확인해 주세요.";
+      else if(err.code==="http_404")m="선택한 모델을 쓸 수 없어요. AI 설정에서 다른 모델(예: Llama 3.1 8B)을 골라주세요.";
+      else if(err.code==="network")m="네트워크 오류예요. 브라우저가 요청을 막았을 수 있어요. 잠시 후 다시 시도해 주세요.";
+      else if(rate)m="Groq이 잠시 혼잡해요. 자동으로 재시도합니다. 계속되면 잠시 뒤 다시 눌러주세요.";
+      else if(err.message)m="검사 실패: "+String(err.message).slice(0,160);
       else if(err.code)m="검사 실패 ("+err.code+")";
     }
     toast(m,7000);
@@ -1352,21 +1278,21 @@ function openDataSheet(){
     <div class="dsec"><h5>CSV 불러오기</h5><div class="drow">
       <button class="dbtn" id="impFile">파일 선택</button>
       <button class="dbtn" id="impPaste">붙여넣기</button></div>
-    <div class="dsec"><h5>AI 설정 (claude.ai 밖에서 · 키를 넣으면 자동)</h5>
-      <div class="lbl2">Gemini API 키</div>
-      <input id="kgem" type="password" placeholder="Gemini 키 (AIza…)" value="${esc(getKey("gemini"))}" style="width:100%;margin-top:4px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
-      <div class="lbl2" style="margin-top:12px">시작 모델</div>
-      <select id="mgem" style="width:100%;margin-top:4px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
-        ${GEMINI_MODELS.map(id=>`<option value="${id}" ${((getModelFor("gemini")||GEMINI_DEFAULT)===id)?"selected":""}>${GEMINI_LABELS[id]||id}</option>`).join("")}
+    <div class="dsec"><h5>AI 설정 (Groq · 무료)</h5>
+      <div class="lbl2">Groq API 키</div>
+      <input id="kgroq" type="password" placeholder="Groq 키 (gsk_…)" value="${esc(getKey("groq"))}" style="width:100%;margin-top:4px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
+      <div class="lbl2" style="margin-top:12px">모델</div>
+      <select id="mgroq" style="width:100%;margin-top:4px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
+        ${GROQ_MODELS.map(id=>`<option value="${id}" ${((getModelFor("groq")||GROQ_DEFAULT)===id)?"selected":""}>${GROQ_LABELS[id]||id}</option>`).join("")}
       </select>
       <button class="btn primary" id="saveKeys" style="margin-top:12px">저장</button>
-      <div style="color:var(--muted);font-size:11.5px;margin-top:8px;line-height:1.6">선택한 모델부터 요청하고, <b>4번 재시도해도 막히면 자동으로 아래(가벼운) 모델</b>로 내려갑니다. 무료로 안 막히게 쓰려면 <b>2.0 Flash-Lite</b> 권장.<br>키 발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--brand)">aistudio.google.com/apikey</a>. 키는 이 브라우저에만 저장돼요. claude.ai에서 열면 키 없이 자동 동작합니다.</div></div>
+      <div style="color:var(--muted);font-size:11.5px;margin-top:8px;line-height:1.6">Groq은 <b>무료·카드 불필요</b>입니다. 키 발급: <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color:var(--brand)">console.groq.com/keys</a>. 막히면 5초 간격으로 최대 10번 자동 재시도합니다. 키는 이 브라우저에만 저장돼요.<br><span style="opacity:.7">버전 ${APP_VERSION}</span></div></div>
     <div style="height:8px"></div>`;
   sheet.classList.add("show");scrim.classList.add("show");
   sheet.querySelectorAll("[data-exp]").forEach(b=>b.onclick=()=>exportCSV(b.dataset.exp));
   $("#impFile").onclick=()=>$("#csvFile").click();
   $("#impPaste").onclick=openPasteImport;
-  $("#saveKeys").onclick=()=>{setKey("gemini",$("#kgem").value);try{localStorage.setItem("endiary.model.gemini",$("#mgem").value);}catch(e){}closeSheet();toast("AI 설정을 저장했어요");if(curTab==="today")renderToday();};
+  $("#saveKeys").onclick=()=>{setKey("groq",$("#kgroq").value);try{localStorage.setItem("endiary.model.groq",$("#mgroq").value);}catch(e){}closeSheet();toast("AI 설정을 저장했어요");if(curTab==="today")renderToday();};
 }
 function openPasteImport(){
   sheet.innerHTML=`<div class="grab"></div><div class="word serif" style="font-size:20px">CSV 붙여넣기</div>
@@ -1384,7 +1310,17 @@ function showCSVFallback(name,csv){
 
 /* boot */
 renderToday();
-if("serviceWorker" in navigator){ window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); }); }
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{
+    const hadController=!!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register("sw.js").then(reg=>{ try{reg.update();}catch(_){}}).catch(()=>{});
+    let refreshing=false;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      if(refreshing) return; refreshing=true;
+      if(hadController) location.reload();   // 새 버전 활성화 → 자동 새로고침 (첫 설치 때는 제외)
+    });
+  });
+}
 </script>
 </body>
 </html>
