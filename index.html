@@ -1,0 +1,1140 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Diary">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#33357a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<title>English Diary</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --font-serif:'Newsreader',Georgia,'Times New Roman',serif;
+  --font-ui:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Segoe UI',Roboto,sans-serif;
+  --bg:#fbfaf6; --surface:#ffffff; --surface-2:#f3f1ec;
+  --ink:#1e2233; --muted:#6b6f7d; --line:#e6e2d8;
+  --brand:#33357a; --brand-soft:#ecebf5; --on-brand:#ffffff;
+  --del:#c0392b; --del-bg:#fbe9e7; --ins:#1f7a4d; --ins-bg:#e7f4ec;
+  --save:#b7791f; --save-bg:#fbf1dc;
+  --shadow:0 1px 2px rgba(30,34,51,.06),0 8px 24px rgba(30,34,51,.06);
+  --radius:16px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14151a; --surface:#1c1e26; --surface-2:#232630;
+    --ink:#e9e8f0; --muted:#9aa0b0; --line:#2c2f3a;
+    --brand:#a6a9f2; --brand-soft:#262a45; --on-brand:#14151a;
+    --del:#ff8578; --del-bg:#3a2320; --ins:#66d19e; --ins-bg:#173026;
+    --save:#e0a94a; --save-bg:#2e2717;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14151a; --surface:#1c1e26; --surface-2:#232630;
+  --ink:#e9e8f0; --muted:#9aa0b0; --line:#2c2f3a;
+  --brand:#a6a9f2; --brand-soft:#262a45; --on-brand:#14151a;
+  --del:#ff8578; --del-bg:#3a2320; --ins:#66d19e; --ins-bg:#173026;
+  --save:#e0a94a; --save-bg:#2e2717;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  font-family:var(--font-ui);background:var(--bg);color:var(--ink);
+  font-size:16px;line-height:1.5;overscroll-behavior-y:none;
+  -webkit-font-smoothing:antialiased;
+}
+.serif{font-family:var(--font-serif)}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+#app{max-width:560px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+
+/* top bar */
+.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px);
+  padding:calc(env(safe-area-inset-top) + 8px) 18px 8px;border-bottom:1px solid transparent;
+  display:flex;align-items:center;gap:10px;min-height:52px}
+.topbar.scrolled{border-bottom-color:var(--line)}
+.topbar .back{font-size:15px;color:var(--brand);font-weight:600;display:flex;align-items:center;gap:2px;margin-left:-4px}
+.topbar h1{font-size:17px;margin:0;font-weight:600;flex:1;text-align:center}
+.topbar .spacer{width:44px}
+.topbar .act{font-size:15px;color:var(--brand);font-weight:600}
+
+/* view scroller */
+.view{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px calc(env(safe-area-inset-bottom) + 88px)}
+.view.pad-top{padding-top:6px}
+
+/* today */
+.daymark{padding:14px 2px 6px}
+.daymark .dow{font-family:var(--font-serif);font-size:40px;line-height:1.05;font-weight:500;letter-spacing:-.01em}
+.daymark .date{color:var(--muted);font-size:14px;margin-top:2px}
+.prompt{color:var(--muted);font-size:14px;margin:2px 2px 12px;font-style:italic;font-family:var(--font-serif)}
+.paper{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+textarea.entry{
+  width:100%;min-height:46vh;border:none;outline:none;resize:none;background:transparent;color:var(--ink);
+  font-family:var(--font-serif);font-size:19px;line-height:1.85;padding:18px;display:block;
+}
+textarea.entry::placeholder{color:var(--muted);opacity:.7}
+.entry-foot{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+.saved-dot{color:var(--ins)}
+.cta-row{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 62px);display:flex;justify-content:center;padding:0 18px;pointer-events:none;z-index:15}
+.cta-row .inner{max-width:560px;width:100%;display:flex;gap:10px;pointer-events:auto}
+.btn{flex:1;border-radius:13px;padding:15px 16px;font-size:16px;font-weight:600;text-align:center;transition:transform .06s ease}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--brand);color:var(--on-brand);box-shadow:0 6px 18px color-mix(in srgb,var(--brand) 35%,transparent)}
+.btn.ghost{background:var(--surface);color:var(--brand);border:1px solid var(--line);box-shadow:var(--shadow)}
+.btn[disabled]{opacity:.5}
+
+/* bottom tabs */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:18;background:color-mix(in srgb,var(--bg) 90%,transparent);
+  backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);
+  border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+.tabbar .inner{max-width:560px;margin:0 auto;width:100%;display:flex}
+.tab{flex:1;padding:8px 0 6px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--muted);font-size:11px}
+.tab svg{width:23px;height:23px}
+.tab.on{color:var(--brand)}
+
+/* segmented */
+.seg{display:flex;background:var(--surface-2);border-radius:11px;padding:3px;margin:14px 0 4px}
+.seg button{flex:1;padding:8px;border-radius:8px;font-size:14px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+
+/* compare */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.col{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.col h4{margin:0;font-size:11.5px;font-weight:700;color:var(--muted);padding:9px 12px 7px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+.col .body{padding:12px;font-family:var(--font-serif);font-size:14.5px;line-height:1.85;word-break:break-word}
+.col.after h4{color:var(--ins)}
+.w{cursor:pointer;border-radius:3px}
+.w:active{background:var(--brand-soft)}
+.tok-del{color:var(--del);background:var(--del-bg);text-decoration:line-through;text-decoration-thickness:1px;border-radius:3px;padding:0 1px}
+.tok-ins{color:var(--ins);background:var(--ins-bg);border-radius:3px;padding:0 1px}
+
+/* correction cards */
+.section-title{font-size:13px;font-weight:700;color:var(--muted);margin:20px 2px 8px;letter-spacing:.01em}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:13px 14px;margin-bottom:10px}
+.card .fixline{font-family:var(--font-serif);font-size:15.5px;line-height:1.6}
+.card .fixline .o{color:var(--del);text-decoration:line-through;text-decoration-thickness:1px}
+.card .fixline .arrow{color:var(--muted);margin:0 6px}
+.card .fixline .c{color:var(--ins);font-weight:600}
+.card .exp{color:var(--muted);font-size:13.5px;margin-top:7px}
+.tag{display:inline-block;font-size:11px;font-weight:700;color:var(--brand);background:var(--brand-soft);border-radius:999px;padding:2px 9px;margin-bottom:8px}
+.savebtn{margin-top:10px;font-size:13px;font-weight:600;color:var(--save);background:var(--save-bg);border-radius:9px;padding:8px 12px;display:inline-flex;align-items:center;gap:5px}
+.savebtn.done{color:var(--muted);background:var(--surface-2)}
+
+/* quiz */
+.qwrap .qhead{display:flex;justify-content:space-between;align-items:baseline;margin:14px 2px 6px}
+.qhead .n{font-size:13px;color:var(--muted);font-weight:600}
+.qhead .score{font-size:13px;color:var(--brand);font-weight:700}
+.qcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 15px;margin-bottom:12px}
+.qcard .q{font-size:15.5px;font-weight:600;margin-bottom:12px;line-height:1.5}
+.qcard .q .serif{font-family:var(--font-serif)}
+.opt{width:100%;text-align:left;border:1.5px solid var(--line);background:var(--surface);border-radius:11px;padding:12px 14px;margin-bottom:8px;font-size:15px;font-family:var(--font-serif);display:flex;gap:10px;align-items:center;transition:.12s}
+.opt .k{font-family:var(--font-ui);font-size:12px;font-weight:700;color:var(--muted);width:18px;flex:none}
+.opt.correct{border-color:var(--ins);background:var(--ins-bg)}
+.opt.wrong{border-color:var(--del);background:var(--del-bg)}
+.opt[disabled]{cursor:default}
+.qexp{font-size:13.5px;color:var(--muted);margin-top:6px;padding:0 2px}
+.qexp b{color:var(--ink)}
+
+/* calendar */
+.calhead{display:flex;align-items:center;justify-content:space-between;margin:16px 2px 8px}
+.calhead .m{font-family:var(--font-serif);font-size:24px;font-weight:600}
+.calnav{display:flex;gap:6px}
+.calnav button{width:38px;height:38px;border-radius:11px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);font-size:17px;color:var(--brand)}
+.grid7{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.dowh{text-align:center;font-size:11px;color:var(--muted);font-weight:600;padding:6px 0 2px}
+.dowh.sun{color:var(--del)}
+.cell{aspect-ratio:1;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:15px;position:relative;background:transparent;color:var(--ink)}
+.cell.empty{visibility:hidden}
+.cell.has{background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
+.cell.today{outline:2px solid var(--brand);outline-offset:-2px}
+.cell .dot{width:5px;height:5px;border-radius:50%;background:var(--brand)}
+.cell .dot.checked{background:var(--ins)}
+.cell.sun{color:var(--del)}
+
+/* reader / lists */
+.reader .rtext{font-family:var(--font-serif);font-size:17px;line-height:1.85;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px;margin-top:12px;white-space:pre-wrap;word-break:break-word}
+.listitem{background:var(--surface);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow);padding:13px 14px;margin-bottom:9px;display:flex;gap:10px;align-items:flex-start}
+.listitem .main{flex:1;min-width:0}
+.listitem .term{font-family:var(--font-serif);font-size:17px;font-weight:600}
+.listitem .mean{color:var(--muted);font-size:13.5px;margin-top:2px}
+.listitem .ex{color:var(--muted);font-size:12.5px;margin-top:5px;font-family:var(--font-serif);font-style:italic}
+.listitem .meta{color:var(--muted);font-size:11px;margin-top:6px}
+.listitem .del{color:var(--del);font-size:13px;padding:4px;align-self:center;flex:none}
+.sent{font-family:var(--font-serif);font-size:15.5px;line-height:1.6}
+
+/* empty */
+.empty{text-align:center;color:var(--muted);padding:56px 24px}
+.empty .em{font-size:34px}
+.empty .t{font-size:16px;font-weight:600;color:var(--ink);margin-top:12px}
+.empty .s{font-size:14px;margin-top:5px}
+
+/* sheet */
+.scrim{position:fixed;inset:0;background:rgba(15,16,22,.4);z-index:40;opacity:0;pointer-events:none;transition:opacity .22s}
+.scrim.show{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;background:var(--surface);border-radius:22px 22px 0 0;
+  box-shadow:0 -8px 40px rgba(0,0,0,.2);transform:translateY(102%);transition:transform .26s cubic-bezier(.3,.9,.3,1);
+  padding:8px 20px calc(env(safe-area-inset-bottom) + 22px);max-width:560px;margin:0 auto}
+.sheet.show{transform:translateY(0)}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--line);margin:8px auto 12px}
+.sheet .word{font-family:var(--font-serif);font-size:27px;font-weight:600}
+.sheet .pos{color:var(--brand);font-size:13px;font-weight:600;margin-top:2px}
+.sheet .ipa{color:var(--muted);font-size:13px;margin-left:8px;font-weight:400}
+.sheet .def{font-size:16px;margin-top:12px}
+.sheet .exen{font-family:var(--font-serif);font-size:15px;margin-top:12px;line-height:1.6}
+.sheet .exko{color:var(--muted);font-size:13.5px;margin-top:3px}
+.sheet .sactions{display:flex;gap:10px;margin-top:18px}
+.sheet .sactions .btn{padding:13px}
+.sheet .ctx{background:var(--surface-2);border-radius:11px;padding:11px 13px;margin-top:14px;font-family:var(--font-serif);font-size:14px;color:var(--muted);line-height:1.6}
+.mini-load{color:var(--muted);font-size:14px;padding:18px 0;text-align:center}
+
+/* overlay loader */
+.loader{position:fixed;inset:0;z-index:50;background:color-mix(in srgb,var(--bg) 72%,transparent);
+  backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.loader.show{display:flex}
+.spin{width:34px;height:34px;border-radius:50%;border:3px solid var(--brand-soft);border-top-color:var(--brand);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.loader .msg{color:var(--muted);font-size:14px}
+
+/* toast */
+.toast{position:fixed;left:50%;transform:translateX(-50%) translateY(20px);bottom:calc(env(safe-area-inset-bottom) + 96px);
+  background:var(--ink);color:var(--bg);font-size:13.5px;font-weight:600;padding:11px 18px;border-radius:999px;z-index:60;
+  opacity:0;transition:.25s;pointer-events:none;max-width:88%}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.notice{background:var(--save-bg);color:var(--ink);border:1px solid color-mix(in srgb,var(--save) 40%,transparent);border-radius:12px;padding:11px 13px;font-size:13px;margin:12px 0}
+.rowbtns{display:flex;gap:8px;margin:12px 0 6px}
+.rowbtns .btn{padding:12px}
+.chips{display:flex;gap:7px;flex-wrap:wrap;margin:6px 0}
+.chip{font-size:13px;font-weight:600;color:var(--muted);background:var(--surface-2);border:1px solid transparent;border-radius:999px;padding:7px 13px}
+.chip.on{color:var(--brand);background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)}
+.setup{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px 13px;margin-top:14px}
+.setup .lbl{font-size:12px;color:var(--muted);font-weight:700;margin:8px 2px 0}
+.setup .lbl:first-child{margin-top:0}
+.dsec h5{margin:16px 2px 6px;font-size:13px;color:var(--muted);font-weight:700}
+.drow{display:flex;gap:8px;flex-wrap:wrap}
+.dbtn{flex:1;min-width:92px;border:1px solid var(--line);background:var(--surface-2);border-radius:11px;padding:13px 10px;font-size:13.5px;font-weight:600;text-align:center;color:var(--ink)}
+.dbtn:active{transform:scale(.98)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar" id="topbar">
+    <button class="back" id="backBtn" style="display:none">‹ 뒤로</button>
+    <div class="spacer" id="lspacer"></div>
+    <h1 id="title">오늘</h1>
+    <button class="act" id="topAct" style="display:none"></button>
+    <div class="spacer" id="rspacer"></div>
+  </div>
+  <div class="view pad-top" id="view"></div>
+</div>
+
+<div class="cta-row" id="ctaRow" style="display:none"><div class="inner" id="ctaInner"></div></div>
+
+<div class="tabbar" id="tabbar"><div class="inner">
+  <button class="tab on" data-tab="today">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H16l4 4v10.5A1.5 1.5 0 0 1 18.5 20h-13A1.5 1.5 0 0 1 4 18.5z"/><path d="M8 9h6M8 12.5h8M8 16h5"/></svg>
+    <span>오늘</span>
+  </button>
+  <button class="tab" data-tab="calendar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/></svg>
+    <span>달력</span>
+  </button>
+  <button class="tab" data-tab="collection">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4h11a2 2 0 0 1 2 2v14l-4-2.2L13 20l-3-2.2L6 20z"/></svg>
+    <span>수집</span>
+  </button>
+</div></div>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet"></div>
+<div class="loader" id="loader"><div class="spin"></div><div class="msg" id="loaderMsg">검사하고 있어요…</div></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
+
+<script>
+"use strict";
+/* ---------------- capability: sample (AI) ---------------- */
+let SAMPLE=null;
+(async()=>{ try{ if(window.claude&&claude.use){ SAMPLE=await claude.use("sample"); } }catch(e){} if(curTab==="today")renderToday(); })();
+function getApiKey(){try{return (localStorage.getItem("endiary.apikey")||"").trim();}catch(e){return"";}}
+function getProvider(){try{return localStorage.getItem("endiary.provider")||"claude";}catch(e){return "claude";}}
+function defModel(p){return p==="openai"?"gpt-4o-mini":p==="gemini"?"gemini-1.5-flash":"claude-3-5-sonnet-20241022";}
+function keyHelp(p){
+  if(p==="openai")return '키 발급: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" style="color:var(--brand)">platform.openai.com</a> ·';
+  if(p==="gemini")return '키 발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--brand)">aistudio.google.com</a> ·';
+  return '키 발급: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:var(--brand)">console.anthropic.com</a> ·';
+}
+function getModel(){try{const m=(localStorage.getItem("endiary.model")||"").trim();return m||defModel(getProvider());}catch(e){return defModel(getProvider());}}
+function aiOn(){return !!SAMPLE || !!getApiKey();}
+async function askJSON(prompt,tier){
+  if(SAMPLE){ return await SAMPLE.json(prompt,{modelTier:tier||"default",cache:false}); }
+  const key=getApiKey(); if(!key) throw {code:"no_ai"};
+  const provider=getProvider(), model=getModel();
+  const instr=prompt+"\n\nReturn ONLY the JSON object. No markdown fences, no extra text.";
+  let txt="";
+  if(provider==="openai"){
+    const res=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+key},body:JSON.stringify({model,messages:[{role:"user",content:instr}],response_format:{type:"json_object"},max_tokens:1600})});
+    if(!res.ok) throw {code:res.status===429?"rate_limited":"http_"+res.status};
+    const d=await res.json(); txt=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||"";
+  }else if(provider==="gemini"){
+    const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:instr}]}],generationConfig:{response_mime_type:"application/json"}})});
+    if(!res.ok) throw {code:res.status===429?"rate_limited":"http_"+res.status};
+    const d=await res.json(); txt=(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]&&d.candidates[0].content.parts[0].text)||"";
+  }else{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"content-type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model,max_tokens:1600,messages:[{role:"user",content:instr}]})});
+    if(!res.ok) throw {code:res.status===429?"rate_limited":"http_"+res.status};
+    const d=await res.json(); txt=(d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+  }
+  txt=(txt||"").trim().replace(/^```json/i,"").replace(/^```/,"").replace(/```$/,"").trim();
+  const s=txt.indexOf("{"),e=txt.lastIndexOf("}"); if(s>=0&&e>=0)txt=txt.slice(s,e+1);
+  return JSON.parse(txt);
+}
+
+/* ---------------- storage ---------------- */
+const KEY="endiary.v1";
+function loadDB(){ try{return JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){return {}} }
+function saveDB(){ try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){} }
+const DB=loadDB();
+DB.entries=DB.entries||{}; DB.vocab=DB.vocab||[]; DB.sentences=DB.sentences||[];
+
+/* ---------------- date helpers ---------------- */
+const DOW_EN=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const DOW_KO=["일","월","화","수","목","금","토"];
+function keyOf(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),da=String(d.getDate()).padStart(2,"0");return `${y}-${m}-${da}`;}
+function parseKey(k){const[y,m,d]=k.split("-").map(Number);return new Date(y,m-1,d);}
+const TODAY_KEY=keyOf(new Date());
+
+/* ---------------- app state ---------------- */
+let curTab="today", curEntryKey=TODAY_KEY, resultTab="compare", calMonth=new Date(), collTab="vocab";
+const $=(s)=>document.querySelector(s);
+const view=$("#view"), titleEl=$("#title"), backBtn=$("#backBtn");
+
+/* ---------------- utils ---------------- */
+function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),1700);}
+function showLoader(m){$("#loaderMsg").textContent=m||"불러오는 중…";$("#loader").classList.add("show");}
+function hideLoader(){$("#loader").classList.remove("show");}
+function cleanWord(w){return (w||"").replace(/^[^A-Za-z'’-]+|[^A-Za-z'’-]+$/g,"");}
+function wrapWords(text){
+  return esc(text).split(/(\s+)/).map(tok=>{
+    if(/^\s+$/.test(tok)) return tok;
+    const c=cleanWord(tok);
+    if(!c) return tok;
+    return `<span class="w" data-w="${esc(c)}">${tok}</span>`;
+  }).join("");
+}
+function splitSentences(t){return (t.match(/[^.!?]+[.!?]*/g)||[t]).map(s=>s.trim()).filter(Boolean);}
+
+/* ---------------- word diff (LCS) ---------------- */
+function tokz(s){return (s||"").trim().split(/\s+/).filter(Boolean);}
+function diffTokens(a,b){
+  const n=a.length,m=b.length;
+  const dp=Array.from({length:n+1},()=>new Int16Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)
+    dp[i][j]=a[i]===b[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+  const out=[];let i=0,j=0;
+  while(i<n&&j<m){
+    if(a[i]===b[j]){out.push(["eq",a[i]]);i++;j++;}
+    else if(dp[i+1][j]>=dp[i][j+1]){out.push(["del",a[i]]);i++;}
+    else{out.push(["ins",b[j]]);j++;}
+  }
+  while(i<n)out.push(["del",a[i++]]);
+  while(j<m)out.push(["ins",b[j++]]);
+  return out;
+}
+function renderDiffCol(diff,side){ // side: 'left'|'right'
+  return diff.map(([t,w])=>{
+    const c=cleanWord(w);
+    const tap=c?`class="w" data-w="${esc(c)}"`:"";
+    if(t==="eq")   return `<span ${tap}>${esc(w)}</span> `;
+    if(t==="del"&&side==="left")  return `<span class="tok-del">${esc(w)}</span> `;
+    if(t==="ins"&&side==="right") return `<span class="tok-ins ${c?"w":""}" ${c?`data-w="${esc(c)}"`:""}>${esc(w)}</span> `;
+    return "";
+  }).join("");
+}
+
+/* ---------------- AI calls ---------------- */
+async function aiCheck(text){
+  const prompt=
+`You are an English writing tutor for a Korean learner keeping an English diary.
+Correct the diary below for grammar, spelling, word choice, punctuation, and naturalness.
+Preserve the writer's meaning and voice. Do NOT add new facts or ideas.
+Return ONLY a JSON object with this exact shape:
+{
+ "corrected": "the full corrected diary text",
+ "corrections": [
+   {"original":"the exact wrong phrase from the diary","corrected":"the fixed phrase","type":"문법|철자|어휘|구두점|표현","explanation":"한국어로 한 문장 설명"}
+ ],
+ "quiz": [
+   {"question":"한국어 지시문 또는 빈칸(___) 포함 영어 문장","options":["보기1","보기2","보기3","보기4"],"answer":0,"explain":"한국어 해설 한 문장"}
+ ]
+}
+Rules: 'answer' is the 0-based index of the correct option. Make 3 to 6 quiz items based ONLY on the actual mistakes (test the correct form vs the learner's wrong form). If the diary is already correct, use "corrections":[] and "quiz":[]. Keep explanations in Korean, concise.
+Diary:
+"""${text}"""`;
+  return await askJSON(prompt,"default");
+}
+async function aiDefine(word,ctx){
+  const prompt=
+`Define the English word or phrase for a Korean learner. Return ONLY JSON:
+{"word":"headword","pos":"품사(한국어: 명사/동사/형용사/부사/구 등)","ipa":"IPA or empty string","meaning":"한국어 뜻 (간결)","example":"a simple natural English example sentence","exampleKo":"예문의 한국어 번역"}
+Word: "${word}"
+Context: "${(ctx||"").slice(0,200)}"`;
+  return await askJSON(prompt,"quick");
+}
+
+/* ---------------- TODAY ---------------- */
+function getEntry(k){return DB.entries[k];}
+function renderToday(){
+  curTab="today"; curEntryKey=TODAY_KEY; setChrome({title:"오늘",back:false});
+  const d=new Date();
+  const e=getEntry(TODAY_KEY)||{};
+  const checked=!!e.corrected;
+  view.innerHTML=`
+    <div class="daymark">
+      <div class="dow serif">${DOW_EN[d.getDay()]}</div>
+      <div class="date">${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${DOW_KO[d.getDay()]})</div>
+    </div>
+    <div class="prompt">How was your day? Write freely in English.</div>
+    <div class="paper">
+      <textarea class="entry" id="entry" placeholder="Today I ...">${esc(e.text||"")}</textarea>
+      <div class="entry-foot"><span id="wc">0 단어</span><span id="savestate"></span></div>
+    </div>
+    ${!aiOn()?`<div class="notice">AI 교정·사전을 쓰려면 이 링크를 <b>claude.ai</b>에서 열거나, <b>수집 → 데이터 → AI 설정</b>에서 API 키를 입력하세요. (글쓰기·저장·단어 시험은 지금도 됩니다.)</div>`:""}
+  `;
+  const ta=$("#entry");
+  const upd=()=>{const wc=(ta.value.trim().match(/\S+/g)||[]).length;$("#wc").textContent=wc+" 단어";};
+  upd();
+  let svT;
+  ta.addEventListener("input",()=>{
+    upd();
+    $("#savestate").textContent="…";
+    clearTimeout(svT);svT=setTimeout(()=>{
+      const cur=getEntry(TODAY_KEY)||{};
+      cur.text=ta.value; cur.updatedAt=Date.now();
+      if(ta.value.trim()==="" && !cur.corrected) delete DB.entries[TODAY_KEY]; else DB.entries[TODAY_KEY]=cur;
+      saveDB();
+      $("#savestate").innerHTML='<span class="saved-dot">✓ 저장됨</span>';
+      renderCTA();
+    },500);
+  });
+  renderCTA();
+}
+function renderCTA(){
+  const row=$("#ctaRow"),inner=$("#ctaInner");
+  if(curTab!=="today"){row.style.display="none";return;}
+  const e=getEntry(TODAY_KEY)||{};
+  const hasText=(e.text||$("#entry")?.value||"").trim().length>0;
+  const checked=!!e.corrected;
+  row.style.display=hasText?"flex":"none";
+  inner.innerHTML=
+    (checked?`<button class="btn ghost" id="seeResult">결과 보기</button>`:"")+
+    `<button class="btn primary" id="checkBtn" ${aiOn()?"":"disabled"}>${checked?"다시 검사":"문법 검사"}</button>`;
+}
+
+async function doCheck(){
+  const ta=$("#entry"); if(!ta)return;
+  const text=ta.value.trim();
+  if(text.length<3){toast("조금 더 써 주세요.");return;}
+  if(!aiOn()){toast("AI 교정을 사용할 수 없어요.");return;}
+  showLoader("문법을 검사하고 있어요…");
+  try{
+    const r=await aiCheck(text);
+    const e=getEntry(TODAY_KEY)||{};
+    e.text=text; e.corrected=r.corrected||text;
+    e.corrections=Array.isArray(r.corrections)?r.corrections:[];
+    e.quiz=Array.isArray(r.quiz)?r.quiz:[];
+    e.quizState={}; e.checkedAt=Date.now();
+    DB.entries[TODAY_KEY]=e; saveDB();
+    hideLoader(); openResult(TODAY_KEY);
+  }catch(err){
+    hideLoader();
+    toast(err&&err.code==="rate_limited"?"잠시 후 다시 시도해 주세요.":"검사에 실패했어요. 다시 시도해 주세요.");
+  }
+}
+
+/* ---------------- RESULT ---------------- */
+let resultKey=null;
+function openResult(k){
+  resultKey=k; resultTab="compare";
+  const past=k!==TODAY_KEY;
+  setChrome({title:"검사 결과",back:true,backTo:past?"reader:"+k:"today"});
+  $("#ctaRow").style.display="none";
+  renderResult();
+  view.scrollTop=0;
+}
+function renderResult(){
+  const e=getEntry(resultKey); if(!e){renderToday();return;}
+  const corr=e.corrections||[], quiz=e.quiz||[];
+  view.innerHTML=`
+    <div class="seg">
+      <button data-rt="compare" class="${resultTab==="compare"?"on":""}">비교 · 교정</button>
+      <button data-rt="quiz" class="${resultTab==="quiz"?"on":""}">퀴즈 ${quiz.length?`(${quiz.length})`:""}</button>
+    </div>
+    <div id="resultBody"></div>`;
+  view.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{resultTab=b.dataset.rt;renderResult();});
+  const body=$("#resultBody");
+  if(resultTab==="compare"){
+    const dl=tokz(e.text), dr=tokz(e.corrected);
+    const diff=diffTokens(dl,dr);
+    body.innerHTML=`
+      <div class="cols">
+        <div class="col"><h4>쓴 글</h4><div class="body">${renderDiffCol(diff,"left")||esc(e.text)}</div></div>
+        <div class="col after"><h4>고친 글</h4><div class="body">${renderDiffCol(diff,"right")||esc(e.corrected)}</div></div>
+      </div>
+      <div class="section-title">고친 부분 ${corr.length?`(${corr.length})`:""}</div>
+      ${corr.length?corr.map((c,i)=>correctionCard(c,i)).join(""):`<div class="card"><div class="exp">고칠 부분이 없어요. 잘 쓰셨어요! 👏</div></div>`}
+      <div style="height:10px"></div>`;
+  }else{
+    if(!quiz.length){ body.innerHTML=`<div class="empty"><div class="em">✅</div><div class="t">퀴즈가 없어요</div><div class="s">이 글은 고칠 부분이 거의 없었어요.</div></div>`; return; }
+    const st=e.quizState||{};
+    const done=quiz.filter((_,i)=>st[i]!=null).length;
+    const score=quiz.filter((q,i)=>st[i]===q.answer).length;
+    body.innerHTML=`
+      <div class="qwrap">
+        <div class="qhead"><span class="n">${done}/${quiz.length} 완료</span><span class="score">${score}점</span></div>
+        ${quiz.map((q,i)=>quizCard(q,i,st[i])).join("")}
+      </div>`;
+  }
+  bindWordTaps(body);
+}
+function correctionCard(c,i){
+  return `<div class="card">
+    <span class="tag">${esc(c.type||"교정")}</span>
+    <div class="fixline"><span class="o">${esc(c.original||"")}</span><span class="arrow">→</span><span class="c">${esc(c.corrected||"")}</span></div>
+    <div class="exp">${esc(c.explanation||"")}</div>
+    <button class="savebtn" data-savesent="${i}">＋ 이 문장 문장수집에 저장</button>
+  </div>`;
+}
+function quizCard(q,i,ans){
+  const answered=ans!=null;
+  const opts=(q.options||[]).map((o,oi)=>{
+    let cls="opt";
+    if(answered){ if(oi===q.answer)cls+=" correct"; else if(oi===ans)cls+=" wrong"; }
+    return `<button class="${cls}" ${answered?"disabled":""} data-q="${i}" data-o="${oi}">
+      <span class="k">${String.fromCharCode(65+oi)}</span><span>${esc(o)}</span></button>`;
+  }).join("");
+  const qhtml=esc(q.question||"").replace(/___+/g,'<span class="serif" style="color:var(--brand);font-weight:700">____</span>');
+  return `<div class="qcard"><div class="q">${qhtml}</div>${opts}
+    ${answered?`<div class="qexp"><b>${ans===q.answer?"정답!":"오답"}</b> ${esc(q.explain||"")}</div>`:""}</div>`;
+}
+
+/* ---------------- word tap → dictionary sheet ---------------- */
+function bindWordTaps(root){
+  (root||document).querySelectorAll(".w").forEach(el=>{
+    el.onclick=()=>openWordSheet(el.dataset.w, findSentence(el));
+  });
+}
+function findSentence(el){
+  const container=el.closest(".body,.rtext,.sent,.fixline");
+  const txt=container?container.textContent:el.textContent;
+  const word=el.dataset.w.toLowerCase();
+  const sents=splitSentences(txt);
+  return sents.find(s=>s.toLowerCase().includes(word))||txt.trim();
+}
+const sheet=$("#sheet"),scrim=$("#scrim");
+function closeSheet(){sheet.classList.remove("show");scrim.classList.remove("show");}
+scrim.onclick=closeSheet;
+function localLookup(word){
+  const w=(word||"").toLowerCase();
+  const hit=DB.vocab.find(x=>(x.word||"").toLowerCase()===w) || TOEIC_SAMPLE.find(x=>(x.word||"").toLowerCase()===w);
+  return hit?{word:hit.word,pos:hit.pos||"",ipa:"",meaning:hit.meaning||"",example:hit.example||"",exampleKo:hit.exampleKo||"",offline:true}:null;
+}
+async function openWordSheet(word,ctx){
+  const w=cleanWord(word); if(!w)return;
+  sheet.innerHTML=`<div class="grab"></div><div class="word serif">${esc(w)}</div><div class="mini-load">뜻을 찾는 중…</div>`;
+  sheet.classList.add("show");scrim.classList.add("show");
+  let def=localLookup(w);
+  if(!def && aiOn()){ try{ def=await aiDefine(w,ctx); }catch(e){} }
+  if(!sheet.classList.contains("show"))return;
+  const meaning=def?`
+    <div class="pos">${esc(def.pos||"")} ${def.ipa?`<span class="ipa">/${esc(def.ipa)}/</span>`:""}${def.offline?`<span style="color:var(--muted);font-weight:400"> · 저장된 뜻</span>`:""}</div>
+    <div class="def">${esc(def.meaning||"")}</div>
+    ${def.example?`<div class="exen">“${esc(def.example)}”</div><div class="exko">${esc(def.exampleKo||"")}</div>`:""}
+  `:`<div class="def" style="color:var(--muted)">${aiOn()?"뜻을 불러오지 못했어요.":"오프라인에서는 저장한 단어와 TOEIC 단어만 볼 수 있어요. (수집 → 데이터 → AI 설정에서 키를 넣으면 모든 단어 조회 가능)"}</div>`;
+  sheet.innerHTML=`
+    <div class="grab"></div>
+    <div class="word serif">${esc(def?.word||w)}</div>
+    ${meaning}
+    ${ctx?`<div class="ctx">“${esc(ctx)}”</div>`:""}
+    <div class="sactions">
+      <button class="btn primary" id="saveWord">단어장에 저장</button>
+      <button class="btn ghost" id="saveSent">문장 저장</button>
+    </div>`;
+  $("#saveWord").onclick=()=>{ addVocab({word:def?.word||w,pos:def?.pos||"",meaning:def?.meaning||"",example:def?.example||"",exampleKo:def?.exampleKo||""}); closeSheet(); toast("단어장에 저장했어요"); };
+  $("#saveSent").onclick=()=>{ addSentence(ctx||""); closeSheet(); toast("문장수집에 저장했어요"); };
+}
+function addVocab(v){
+  if(!v.word)return;
+  if(DB.vocab.some(x=>x.word.toLowerCase()===v.word.toLowerCase())){toast("이미 단어장에 있어요");return;}
+  DB.vocab.unshift({...v,savedAt:Date.now(),date:curEntryKey}); saveDB();
+}
+function addSentence(s){
+  s=(s||"").trim(); if(!s)return;
+  if(DB.sentences.some(x=>x.text===s)){toast("이미 저장된 문장이에요");return;}
+  DB.sentences.unshift({text:s,savedAt:Date.now(),date:curEntryKey}); saveDB();
+}
+
+/* ---------------- CALENDAR ---------------- */
+function renderCalendar(){
+  curTab="calendar"; setChrome({title:"달력",back:false});
+  $("#ctaRow").style.display="none";
+  const y=calMonth.getFullYear(),m=calMonth.getMonth();
+  const first=new Date(y,m,1), start=first.getDay(), days=new Date(y,m+1,0).getDate();
+  let cells="";
+  for(let i=0;i<start;i++)cells+=`<div class="cell empty"></div>`;
+  for(let d=1;d<=days;d++){
+    const k=keyOf(new Date(y,m,d));const e=DB.entries[k];const dow=new Date(y,m,d).getDay();
+    const has=!!(e&&(e.text||"").trim());
+    cells+=`<div class="cell ${has?"has":""} ${k===TODAY_KEY?"today":""} ${dow===0?"sun":""}" data-day="${k}" ${has?"":"style='pointer-events:none'"}>
+      <span>${d}</span>${has?`<span class="dot ${e.corrected?"checked":""}"></span>`:""}</div>`;
+  }
+  const dows=DOW_KO.map((d,i)=>`<div class="dowh ${i===0?"sun":""}">${d}</div>`).join("");
+  const cnt=Object.values(DB.entries).filter(e=>(e.text||"").trim()).length;
+  view.innerHTML=`
+    <div class="calhead">
+      <div class="m serif">${y}. ${String(m+1).padStart(2,"0")}</div>
+      <div class="calnav"><button id="pm">‹</button><button id="tm">오늘</button><button id="nm">›</button></div>
+    </div>
+    <div class="grid7">${dows}</div>
+    <div class="grid7" style="margin-top:2px">${cells}</div>
+    <div style="text-align:center;color:var(--muted);font-size:12.5px;margin-top:18px">지금까지 ${cnt}일 기록 · 초록 점은 검사 완료</div>`;
+  $("#pm").onclick=()=>{calMonth=new Date(y,m-1,1);renderCalendar();};
+  $("#nm").onclick=()=>{calMonth=new Date(y,m+1,1);renderCalendar();};
+  $("#tm").onclick=()=>{calMonth=new Date();renderCalendar();};
+  view.querySelectorAll(".cell.has").forEach(c=>c.onclick=()=>openReader(c.dataset.day));
+}
+
+/* ---------------- READER (past entry) ---------------- */
+function openReader(k){
+  curEntryKey=k;
+  const e=DB.entries[k]; if(!e)return;
+  const d=parseKey(k);
+  setChrome({title:`${d.getMonth()+1}.${d.getDate()} (${DOW_KO[d.getDay()]})`,back:true,backTo:"calendar"});
+  $("#ctaRow").style.display="none";
+  const corr=e.corrections||[];
+  view.innerHTML=`
+    <div class="reader">
+      <div class="daymark" style="padding:14px 2px 2px"><div class="dow serif" style="font-size:30px">${DOW_EN[d.getDay()]}</div>
+      <div class="date">${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일</div></div>
+      <div class="rtext">${wrapWords(e.text||"")}</div>
+      ${e.corrected?`
+        <div class="section-title">고친 글</div>
+        <div class="rtext" style="border-color:color-mix(in srgb,var(--ins) 40%,var(--line))">${wrapWords(e.corrected)}</div>
+        ${corr.length?`<div class="section-title">고친 부분 (${corr.length})</div>${corr.map((c,i)=>correctionCard(c,i)).join("")}`:""}
+      `:`<div class="notice" style="margin-top:14px">아직 검사하지 않은 글이에요.</div>`}
+      <div class="cta-row" style="position:static;padding:8px 0 0"><div class="inner">
+        ${e.corrected?`<button class="btn ghost" id="openRes">퀴즈·비교 결과 보기</button>`:""}
+      </div></div>
+      <div style="height:16px"></div>
+    </div>`;
+  bindWordTaps(view);
+  if($("#openRes"))$("#openRes").onclick=()=>openResult(k);
+}
+
+/* ---------------- COLLECTION ---------------- */
+function renderCollection(){
+  curTab="collection"; setChrome({title:"수집",back:false,action:{label:"데이터",fn:openDataSheet}});
+  $("#ctaRow").style.display="none";
+  const v=DB.vocab,s=DB.sentences;
+  view.innerHTML=`
+    <div class="seg">
+      <button data-ct="vocab" class="${collTab==="vocab"?"on":""}">단어장 ${v.length?`(${v.length})`:""}</button>
+      <button data-ct="sent" class="${collTab==="sent"?"on":""}">문장수집 ${s.length?`(${s.length})`:""}</button>
+    </div>
+    <div id="collBody"></div>`;
+  view.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{collTab=b.dataset.ct;renderCollection();});
+  const body=$("#collBody");
+  if(collTab==="vocab"){
+    body.innerHTML=`
+      <div class="rowbtns">
+        <button class="btn primary" id="startTest">단어 시험 보기</button>
+        <button class="btn ghost" id="addToeic">TOEIC 50단어 추가</button>
+      </div>`+
+      (v.length? v.map((x,i)=>`
+      <div class="listitem">
+        <div class="main">
+          <div class="term">${esc(x.word)} ${x.pos?`<span style="font-size:12px;color:var(--brand);font-weight:600">· ${esc(x.pos)}</span>`:""}</div>
+          <div class="mean">${esc(x.meaning||"")}</div>
+          ${x.example?`<div class="ex">“${esc(x.example)}” — ${esc(x.exampleKo||"")}</div>`:""}
+          <div class="meta">${x.date||""}</div>
+        </div>
+        <button class="del" data-delv="${i}">삭제</button>
+      </div>`).join("")
+      : emptyState("📖","단어장이 비어 있어요","검사 결과에서 단어를 눌러 저장하거나, ‘TOEIC 50단어 추가’로 시작해 보세요."));
+    body.querySelectorAll("[data-delv]").forEach(b=>b.onclick=()=>{DB.vocab.splice(+b.dataset.delv,1);saveDB();renderCollection();});
+    $("#startTest").onclick=openVocabTest;
+    $("#addToeic").onclick=()=>{let n=0;TOEIC_SAMPLE.forEach(w=>{if(!DB.vocab.some(v=>v.word.toLowerCase()===w.word.toLowerCase())){DB.vocab.push({...w,savedAt:Date.now(),date:"TOEIC"});n++;}});saveDB();renderCollection();toast(n?`${n}개 추가했어요`:"이미 모두 있어요");};
+  }else{
+    body.innerHTML= s.length? s.map((x,i)=>`
+      <div class="listitem">
+        <div class="main"><div class="sent">“${esc(x.text)}”</div><div class="meta">${x.date||""}</div></div>
+        <button class="del" data-dels="${i}">삭제</button>
+      </div>`).join("")
+      : emptyState("✍️","모은 문장이 없어요","교정 카드의 ‘문장수집에 저장’이나 단어 팝업에서 문장을 저장할 수 있어요.");
+    body.querySelectorAll("[data-dels]").forEach(b=>b.onclick=()=>{DB.sentences.splice(+b.dataset.dels,1);saveDB();renderCollection();});
+  }
+  bindWordTaps(body);
+}
+function emptyState(em,t,s){return `<div class="empty"><div class="em">${em}</div><div class="t">${t}</div><div class="s">${s}</div></div>`;}
+
+/* ---------------- chrome / nav ---------------- */
+let backTarget=null, curAction=null;
+function setChrome({title,back,backTo,action}){
+  titleEl.textContent=title;
+  backBtn.style.display=back?"flex":"none";
+  $("#lspacer").style.display=back?"none":"block";
+  backTarget=backTo||null;
+  curAction=action||null;
+  const ta=$("#topAct"),rs=$("#rspacer");
+  if(curAction){ta.textContent=curAction.label;ta.style.display="block";rs.style.display="none";}
+  else{ta.style.display="none";rs.style.display="block";}
+}
+$("#topAct").onclick=()=>{ if(curAction&&curAction.fn)curAction.fn(); };
+backBtn.onclick=()=>{
+  if(!backTarget){renderToday();switchTab("today");return;}
+  if(backTarget==="today"){switchTab("today");renderToday();}
+  else if(backTarget==="calendar"){switchTab("calendar");renderCalendar();}
+  else if(backTarget==="collection"){switchTab("collection");renderCollection();}
+  else if(backTarget.startsWith("reader:")){openReader(backTarget.slice(7));}
+};
+function switchTab(t){
+  curTab=t;
+  document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("on",b.dataset.tab===t));
+}
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
+  const t=b.dataset.tab; switchTab(t); closeSheet();
+  if(t==="today"){curEntryKey=TODAY_KEY;renderToday();}
+  else if(t==="calendar")renderCalendar();
+  else if(t==="collection")renderCollection();
+  view.scrollTop=0;
+});
+
+/* global click delegation for dynamic buttons */
+document.addEventListener("click",e=>{
+  const cb=e.target.closest("#checkBtn"); if(cb){doCheck();return;}
+  const sr=e.target.closest("#seeResult"); if(sr){openResult(TODAY_KEY);return;}
+  const opt=e.target.closest(".opt[data-q]"); if(opt&&!opt.disabled){
+    const qi=+opt.dataset.q, oi=+opt.dataset.o, e2=getEntry(resultKey);
+    if(e2&&e2.quiz){ e2.quizState=e2.quizState||{}; if(e2.quizState[qi]==null){ e2.quizState[qi]=oi; saveDB(); const st=view.scrollTop; renderResult(); view.scrollTop=st; } }
+    return;
+  }
+  const topt=e.target.closest(".opt[data-tq]"); if(topt&&!topt.disabled){
+    const qi=+topt.dataset.tq, oi=+topt.dataset.to;
+    if(testState&&testState.answers[qi]==null){ testState.answers[qi]=oi; const st=view.scrollTop; renderTest(); view.scrollTop=st; }
+    return;
+  }
+  const ss=e.target.closest("[data-savesent]"); if(ss){
+    const e3=getEntry(resultKey||curEntryKey); const c=e3&&e3.corrections&&e3.corrections[+ss.dataset.savesent];
+    if(c){ // save the corrected sentence containing this fix
+      const target=(c.corrected||"").trim();
+      const full=(e3.corrected||""); const sents=splitSentences(full);
+      const sent=sents.find(s=>s.includes(target))||target;
+      addSentence(sent); ss.textContent="✓ 저장됨"; ss.classList.add("done");
+    }
+    return;
+  }
+});
+
+/* scroll shadow */
+view.addEventListener("scroll",()=>{ $("#topbar").classList.toggle("scrolled",view.scrollTop>4); },{passive:true});
+
+/* ================= TOEIC sample words ================= */
+const TOEIC_SAMPLE=[
+ {word:"accomplish",pos:"동사",meaning:"달성하다, 완수하다",example:"She accomplished her sales goals.",exampleKo:"그녀는 판매 목표를 달성했다."},
+ {word:"acquire",pos:"동사",meaning:"획득하다, 인수하다",example:"The firm acquired a small startup.",exampleKo:"그 회사는 작은 스타트업을 인수했다."},
+ {word:"agenda",pos:"명사",meaning:"안건, 의제",example:"The agenda has five items.",exampleKo:"안건은 다섯 가지다."},
+ {word:"allocate",pos:"동사",meaning:"할당하다, 배분하다",example:"We allocated the budget carefully.",exampleKo:"우리는 예산을 신중히 할당했다."},
+ {word:"appreciate",pos:"동사",meaning:"감사하다, 진가를 알아보다",example:"I appreciate your quick reply.",exampleKo:"빠른 답장 감사합니다."},
+ {word:"approve",pos:"동사",meaning:"승인하다",example:"The manager approved the plan.",exampleKo:"매니저가 그 계획을 승인했다."},
+ {word:"attend",pos:"동사",meaning:"참석하다",example:"Please attend the seminar.",exampleKo:"세미나에 참석해 주세요."},
+ {word:"available",pos:"형용사",meaning:"이용 가능한, 시간이 되는",example:"The manager is available now.",exampleKo:"매니저는 지금 시간이 됩니다."},
+ {word:"budget",pos:"명사",meaning:"예산",example:"We have a tight budget.",exampleKo:"예산이 빠듯하다."},
+ {word:"candidate",pos:"명사",meaning:"후보자, 지원자",example:"She is a strong candidate.",exampleKo:"그녀는 유력한 후보다."},
+ {word:"colleague",pos:"명사",meaning:"동료",example:"My colleague helped me.",exampleKo:"동료가 나를 도왔다."},
+ {word:"commute",pos:"동사·명사",meaning:"통근(하다)",example:"I commute by subway.",exampleKo:"나는 지하철로 통근한다."},
+ {word:"confirm",pos:"동사",meaning:"확인하다, 확정하다",example:"Please confirm your reservation.",exampleKo:"예약을 확인해 주세요."},
+ {word:"consider",pos:"동사",meaning:"고려하다",example:"We are considering the offer.",exampleKo:"우리는 그 제안을 고려 중이다."},
+ {word:"contract",pos:"명사",meaning:"계약(서)",example:"Sign the contract here.",exampleKo:"여기에 계약서를 서명하세요."},
+ {word:"deadline",pos:"명사",meaning:"마감 기한",example:"We met the deadline.",exampleKo:"우리는 마감을 지켰다."},
+ {word:"deliver",pos:"동사",meaning:"배달하다, 이행하다",example:"They deliver on time.",exampleKo:"그들은 제때 배달한다."},
+ {word:"department",pos:"명사",meaning:"부서",example:"the marketing department",exampleKo:"마케팅 부서"},
+ {word:"discount",pos:"명사",meaning:"할인",example:"a 20% discount",exampleKo:"20% 할인"},
+ {word:"efficient",pos:"형용사",meaning:"효율적인",example:"an efficient process",exampleKo:"효율적인 절차"},
+ {word:"employee",pos:"명사",meaning:"직원",example:"a new employee",exampleKo:"신입 직원"},
+ {word:"estimate",pos:"명사·동사",meaning:"견적, 추정(하다)",example:"a cost estimate",exampleKo:"비용 견적"},
+ {word:"expense",pos:"명사",meaning:"비용, 경비",example:"travel expenses",exampleKo:"출장 비용"},
+ {word:"facility",pos:"명사",meaning:"시설",example:"modern facilities",exampleKo:"현대적인 시설"},
+ {word:"feature",pos:"명사",meaning:"특징, 기능",example:"a useful feature",exampleKo:"유용한 기능"},
+ {word:"increase",pos:"동사·명사",meaning:"증가(하다)",example:"Sales increased sharply.",exampleKo:"매출이 급증했다."},
+ {word:"invoice",pos:"명사",meaning:"청구서, 송장",example:"Send the invoice today.",exampleKo:"오늘 청구서를 보내세요."},
+ {word:"maintain",pos:"동사",meaning:"유지하다",example:"We maintain high quality.",exampleKo:"우리는 높은 품질을 유지한다."},
+ {word:"negotiate",pos:"동사",meaning:"협상하다",example:"They negotiated a new deal.",exampleKo:"그들은 새 거래를 협상했다."},
+ {word:"offer",pos:"명사·동사",meaning:"제안, 제공(하다)",example:"a special offer",exampleKo:"특별 제공"},
+ {word:"participate",pos:"동사",meaning:"참여하다",example:"participate in the event",exampleKo:"행사에 참여하다"},
+ {word:"postpone",pos:"동사",meaning:"연기하다, 미루다",example:"We postponed the meeting.",exampleKo:"우리는 회의를 연기했다."},
+ {word:"presentation",pos:"명사",meaning:"발표, 프레젠테이션",example:"give a presentation",exampleKo:"발표를 하다"},
+ {word:"purchase",pos:"동사·명사",meaning:"구매(하다)",example:"purchase office supplies",exampleKo:"사무용품을 구매하다"},
+ {word:"reduce",pos:"동사",meaning:"줄이다, 감소시키다",example:"reduce costs",exampleKo:"비용을 줄이다"},
+ {word:"refund",pos:"명사·동사",meaning:"환불(하다)",example:"request a refund",exampleKo:"환불을 요청하다"},
+ {word:"register",pos:"동사",meaning:"등록하다",example:"register for the class",exampleKo:"수업에 등록하다"},
+ {word:"reliable",pos:"형용사",meaning:"믿을 수 있는",example:"a reliable supplier",exampleKo:"믿을 수 있는 공급업체"},
+ {word:"request",pos:"명사·동사",meaning:"요청(하다)",example:"fill out a request form",exampleKo:"요청서를 작성하다"},
+ {word:"require",pos:"동사",meaning:"요구하다, 필요로 하다",example:"This requires approval.",exampleKo:"이것은 승인이 필요하다."},
+ {word:"reservation",pos:"명사",meaning:"예약",example:"make a reservation",exampleKo:"예약을 하다"},
+ {word:"responsible",pos:"형용사",meaning:"책임이 있는",example:"responsible for sales",exampleKo:"영업을 책임지는"},
+ {word:"revenue",pos:"명사",meaning:"수익, 매출",example:"annual revenue",exampleKo:"연간 수익"},
+ {word:"schedule",pos:"명사·동사",meaning:"일정(을 잡다)",example:"a busy schedule",exampleKo:"바쁜 일정"},
+ {word:"shipment",pos:"명사",meaning:"배송(물), 선적",example:"track the shipment",exampleKo:"배송을 추적하다"},
+ {word:"supply",pos:"명사·동사",meaning:"공급(하다), 용품",example:"office supplies",exampleKo:"사무용품"},
+ {word:"vendor",pos:"명사",meaning:"판매업체, 공급업자",example:"a trusted vendor",exampleKo:"신뢰할 수 있는 업체"},
+ {word:"warehouse",pos:"명사",meaning:"창고",example:"store it in the warehouse",exampleKo:"그것을 창고에 보관하다"},
+ {word:"apply",pos:"동사",meaning:"지원하다, 적용하다",example:"apply for the position",exampleKo:"그 직책에 지원하다"},
+ {word:"complaint",pos:"명사",meaning:"불만, 항의",example:"handle a complaint",exampleKo:"불만을 처리하다"}
+];
+const _MORE=[
+ ["achieve","동사","달성하다","achieve a target","목표를 달성하다"],
+ ["additional","형용사","추가의","additional fees","추가 요금"],
+ ["adjust","동사","조정하다","adjust the settings","설정을 조정하다"],
+ ["advertise","동사","광고하다","advertise a product","제품을 광고하다"],
+ ["afford","동사","(금전·시간의) 여유가 되다","We can't afford it.","우리는 그럴 여유가 없다"],
+ ["agreement","명사","합의, 계약","reach an agreement","합의에 이르다"],
+ ["amount","명사","양, 액수","a large amount","많은 양"],
+ ["announce","동사","발표하다","announce the results","결과를 발표하다"],
+ ["annual","형용사","연례의, 연간의","an annual report","연례 보고서"],
+ ["apologize","동사","사과하다","apologize for the delay","지연에 대해 사과하다"],
+ ["appliance","명사","(가전) 기기","kitchen appliances","주방 가전"],
+ ["applicant","명사","지원자","a job applicant","입사 지원자"],
+ ["appointment","명사","약속, 예약","make an appointment","약속을 잡다"],
+ ["arrange","동사","마련하다, 준비하다","arrange a meeting","회의를 마련하다"],
+ ["assemble","동사","조립하다, 모이다","assemble the parts","부품을 조립하다"],
+ ["assign","동사","배정하다, 맡기다","assign a task","업무를 맡기다"],
+ ["assist","동사","돕다","assist customers","고객을 돕다"],
+ ["attach","동사","첨부하다, 붙이다","attach a file","파일을 첨부하다"],
+ ["attract","동사","끌어들이다","attract customers","고객을 끌어들이다"],
+ ["authorize","동사","승인하다, 권한을 주다","authorize a payment","지불을 승인하다"],
+ ["benefit","명사","혜택, 이익","employee benefits","직원 복리후생"],
+ ["board","명사","이사회, 위원회","the board of directors","이사회"],
+ ["brochure","명사","안내 책자","a travel brochure","여행 안내책자"],
+ ["cancel","동사","취소하다","cancel the order","주문을 취소하다"],
+ ["capacity","명사","수용력, 용량","seating capacity","좌석 수용력"],
+ ["certificate","명사","증명서","a gift certificate","상품권"],
+ ["charge","동사·명사","청구하다, 요금","a service charge","서비스 요금"],
+ ["client","명사","고객, 의뢰인","a new client","새 고객"],
+ ["competition","명사","경쟁, 대회","face stiff competition","치열한 경쟁에 직면하다"],
+ ["complete","동사·형용사","완료하다, 완전한","complete the form","양식을 작성하다"],
+ ["complimentary","형용사","무료의","a complimentary breakfast","무료 조식"],
+ ["component","명사","부품, 구성 요소","electronic components","전자 부품"],
+ ["conduct","동사","실시하다, 수행하다","conduct a survey","설문을 실시하다"],
+ ["conference","명사","회의, 학회","an annual conference","연례 회의"],
+ ["confidential","형용사","기밀의","confidential documents","기밀 문서"],
+ ["consumer","명사","소비자","consumer demand","소비자 수요"],
+ ["contain","동사","포함하다","The box contains samples.","상자에 샘플이 들어 있다"],
+ ["contribute","동사","기여하다, 기부하다","contribute to the project","프로젝트에 기여하다"],
+ ["convenient","형용사","편리한","a convenient location","편리한 위치"],
+ ["cooperate","동사","협력하다","cooperate with the team","팀과 협력하다"],
+ ["corporate","형용사","기업의","corporate culture","기업 문화"],
+ ["current","형용사","현재의","the current price","현재 가격"],
+ ["customer","명사","고객","a loyal customer","단골 고객"],
+ ["decline","동사","감소하다, 거절하다","decline an offer","제안을 거절하다"],
+ ["decrease","동사","감소하다","Sales decreased.","매출이 감소했다"],
+ ["dedicated","형용사","헌신적인, 전용의","a dedicated team","헌신적인 팀"],
+ ["delay","명사·동사","지연, 미루다","a flight delay","항공편 지연"],
+ ["demand","명사·동사","수요, 요구하다","high demand","높은 수요"],
+ ["demonstrate","동사","시연하다, 증명하다","demonstrate a device","장치를 시연하다"],
+ ["describe","동사","묘사하다, 설명하다","describe the product","제품을 설명하다"],
+ ["determine","동사","결정하다","determine the cause","원인을 규명하다"],
+ ["device","명사","장치, 기기","a mobile device","모바일 기기"],
+ ["distribute","동사","배포하다, 유통하다","distribute flyers","전단을 배포하다"],
+ ["document","명사","문서, 서류","an official document","공식 문서"],
+ ["draft","명사·동사","초안(을 작성하다)","a first draft","초안"],
+ ["due","형용사","예정된, 기한이 된","The report is due Friday.","보고서는 금요일이 기한이다"],
+ ["effective","형용사","효과적인, 시행되는","an effective method","효과적인 방법"],
+ ["eligible","형용사","자격이 있는","eligible for a discount","할인 자격이 있는"],
+ ["emphasize","동사","강조하다","emphasize quality","품질을 강조하다"],
+ ["ensure","동사","보장하다, 확실히 하다","ensure safety","안전을 보장하다"],
+ ["entire","형용사","전체의","the entire staff","전 직원"],
+ ["equipment","명사","장비","office equipment","사무 장비"],
+ ["establish","동사","설립하다, 확립하다","establish a company","회사를 설립하다"],
+ ["evaluate","동사","평가하다","evaluate performance","성과를 평가하다"],
+ ["exceed","동사","초과하다, 넘다","exceed expectations","기대를 뛰어넘다"],
+ ["exhibit","명사·동사","전시(하다)","an art exhibit","미술 전시"],
+ ["expand","동사","확장하다","expand the business","사업을 확장하다"],
+ ["expire","동사","만료되다","The coupon expires soon.","쿠폰이 곧 만료된다"],
+ ["extend","동사","연장하다, 늘리다","extend the deadline","마감을 연장하다"],
+ ["fee","명사","요금, 수수료","a membership fee","회비"],
+ ["financial","형용사","재정의, 금융의","financial report","재무 보고서"],
+ ["forecast","명사·동사","예측(하다)","a weather forecast","일기 예보"],
+ ["found","동사","설립하다","found a company","회사를 설립하다"],
+ ["fund","명사·동사","자금(을 대다)","raise funds","자금을 모으다"],
+ ["generate","동사","생성하다, 창출하다","generate revenue","수익을 창출하다"],
+ ["grant","명사·동사","보조금, (허가를) 주다","a research grant","연구 보조금"],
+ ["guarantee","명사·동사","보증(하다)","a money-back guarantee","환불 보증"],
+ ["handle","동사","다루다, 처리하다","handle complaints","불만을 처리하다"],
+ ["headquarters","명사","본사","company headquarters","회사 본사"],
+ ["hire","동사","고용하다","hire new staff","신입 직원을 고용하다"],
+ ["implement","동사","시행하다","implement a policy","정책을 시행하다"],
+ ["improve","동사","개선하다","improve efficiency","효율을 개선하다"],
+ ["income","명사","소득, 수입","annual income","연간 소득"],
+ ["indicate","동사","나타내다, 가리키다","indicate a problem","문제를 나타내다"],
+ ["industry","명사","산업, 업계","the tech industry","기술 산업"],
+ ["inform","동사","알리다","inform the staff","직원에게 알리다"],
+ ["inspect","동사","점검하다, 검사하다","inspect the equipment","장비를 점검하다"],
+ ["install","동사","설치하다","install software","소프트웨어를 설치하다"],
+ ["instruction","명사","지시, 설명","follow the instructions","지시를 따르다"],
+ ["insurance","명사","보험","health insurance","건강 보험"],
+ ["inventory","명사","재고","take inventory","재고를 조사하다"],
+ ["involve","동사","포함하다, 관련시키다","involve staff","직원을 참여시키다"],
+ ["issue","명사·동사","문제, 발행하다","a technical issue","기술적 문제"],
+ ["itinerary","명사","여행 일정표","a travel itinerary","여행 일정표"],
+ ["launch","동사·명사","출시(하다)","launch a product","제품을 출시하다"],
+ ["lease","명사·동사","임대(하다)","lease an office","사무실을 임대하다"],
+ ["located","형용사","위치한","conveniently located","편리하게 위치한"],
+ ["manufacture","동사","제조하다","manufacture cars","자동차를 제조하다"],
+ ["material","명사","자재, 재료","building materials","건축 자재"],
+ ["measure","명사·동사","조치, 측정하다","safety measures","안전 조치"],
+ ["merchandise","명사","상품","display merchandise","상품을 진열하다"],
+ ["merge","동사","합병하다","The two firms merged.","두 회사가 합병했다"],
+ ["notify","동사","통지하다","notify customers","고객에게 통지하다"],
+ ["obtain","동사","얻다, 획득하다","obtain a permit","허가를 얻다"],
+ ["operate","동사","운영하다, 작동하다","operate a machine","기계를 작동하다"],
+ ["opportunity","명사","기회","a great opportunity","좋은 기회"],
+ ["organize","동사","조직하다, 정리하다","organize an event","행사를 준비하다"],
+ ["overtime","명사","초과 근무","work overtime","초과 근무를 하다"],
+ ["payment","명사","지불, 결제","late payment","연체 지불"],
+ ["performance","명사","성과, 공연","job performance","업무 성과"],
+ ["permit","명사·동사","허가(하다)","a parking permit","주차 허가증"],
+ ["personnel","명사","직원, 인사부","personnel department","인사부"],
+ ["policy","명사","정책, 방침","company policy","회사 방침"],
+ ["position","명사","직위, 위치","apply for a position","직위에 지원하다"],
+ ["prefer","동사","선호하다","prefer tea to coffee","커피보다 차를 선호하다"],
+ ["prevent","동사","막다, 예방하다","prevent accidents","사고를 예방하다"],
+ ["previous","형용사","이전의","the previous meeting","이전 회의"],
+ ["procedure","명사","절차","safety procedures","안전 절차"],
+ ["process","명사·동사","과정, 처리하다","process an order","주문을 처리하다"],
+ ["productivity","명사","생산성","boost productivity","생산성을 높이다"],
+ ["profit","명사","이익, 수익","make a profit","이익을 내다"],
+ ["promote","동사","승진시키다, 홍보하다","promote a manager","매니저를 승진시키다"],
+ ["property","명사","재산, 부동산","commercial property","상업용 부동산"],
+ ["proposal","명사","제안(서)","submit a proposal","제안서를 제출하다"],
+ ["prospective","형용사","유망한, 잠재적인","a prospective client","잠재 고객"],
+ ["provide","동사","제공하다","provide support","지원을 제공하다"],
+ ["publish","동사","출판하다, 게재하다","publish a book","책을 출판하다"],
+ ["qualify","동사","자격을 얻다","qualify for the role","그 역할에 자격이 되다"],
+ ["quality","명사","품질","high quality","높은 품질"],
+ ["quantity","명사","수량","a large quantity","많은 수량"],
+ ["quote","명사·동사","견적, 인용하다","request a quote","견적을 요청하다"],
+ ["rate","명사","비율, 요금","the interest rate","이자율"],
+ ["receipt","명사","영수증","keep the receipt","영수증을 보관하다"],
+ ["recent","형용사","최근의","recent changes","최근 변경 사항"],
+ ["recommend","동사","추천하다","recommend a restaurant","식당을 추천하다"],
+ ["recruit","동사","모집하다","recruit new staff","신입 직원을 모집하다"],
+ ["region","명사","지역","the Asia region","아시아 지역"],
+ ["relocate","동사","이전하다","relocate the office","사무실을 이전하다"],
+ ["remind","동사","상기시키다","remind me later","나중에 알려 주세요"],
+ ["renew","동사","갱신하다","renew a contract","계약을 갱신하다"],
+ ["renovate","동사","개조하다, 보수하다","renovate the building","건물을 개조하다"],
+ ["replace","동사","교체하다, 대신하다","replace the parts","부품을 교체하다"],
+ ["reputation","명사","명성, 평판","a good reputation","좋은 평판"],
+ ["reschedule","동사","일정을 변경하다","reschedule the meeting","회의 일정을 변경하다"],
+ ["resign","동사","사임하다","resign from the job","직장을 사임하다"],
+ ["resolve","동사","해결하다","resolve an issue","문제를 해결하다"],
+ ["respond","동사","응답하다","respond to emails","이메일에 응답하다"],
+ ["resume","명사","이력서","update your resume","이력서를 업데이트하다"],
+ ["retail","명사","소매","a retail store","소매점"],
+ ["retire","동사","은퇴하다","retire next year","내년에 은퇴하다"],
+ ["review","명사·동사","검토(하다), 후기","a performance review","성과 평가"],
+ ["revise","동사","수정하다","revise the report","보고서를 수정하다"],
+ ["satisfy","동사","만족시키다","satisfy customers","고객을 만족시키다"],
+ ["secure","동사·형용사","확보하다, 안전한","secure a contract","계약을 확보하다"],
+ ["seminar","명사","세미나","attend a seminar","세미나에 참석하다"],
+ ["ship","동사","발송하다, 배송하다","ship the goods","상품을 발송하다"],
+ ["significant","형용사","중요한, 상당한","a significant increase","상당한 증가"],
+ ["solution","명사","해결책","find a solution","해결책을 찾다"],
+ ["staff","명사","직원","the sales staff","영업 직원"],
+ ["statement","명사","명세서, 진술","a bank statement","은행 명세서"],
+ ["strategy","명사","전략","a marketing strategy","마케팅 전략"],
+ ["submit","동사","제출하다","submit a report","보고서를 제출하다"],
+ ["subscribe","동사","구독하다","subscribe to a magazine","잡지를 구독하다"],
+ ["substantial","형용사","상당한","a substantial amount","상당한 액수"],
+ ["sufficient","형용사","충분한","sufficient funds","충분한 자금"],
+ ["suggest","동사","제안하다","suggest an idea","아이디어를 제안하다"],
+ ["supervisor","명사","상사, 관리자","report to a supervisor","상사에게 보고하다"],
+ ["survey","명사·동사","설문조사(하다)","conduct a survey","설문을 실시하다"],
+ ["suspend","동사","중단하다, 정지하다","suspend service","서비스를 중단하다"],
+ ["task","명사","업무, 과제","an urgent task","긴급한 업무"],
+ ["technician","명사","기술자","a service technician","서비스 기술자"],
+ ["temporary","형용사","임시의","a temporary job","임시직"],
+ ["tenant","명사","세입자","a new tenant","새 세입자"],
+ ["transaction","명사","거래","a bank transaction","은행 거래"],
+ ["transfer","동사·명사","이동, 이체(하다)","transfer money","돈을 이체하다"],
+ ["update","명사·동사","갱신(하다), 최신 소식","a software update","소프트웨어 업데이트"],
+ ["upcoming","형용사","다가오는","the upcoming event","다가오는 행사"],
+ ["urgent","형용사","긴급한","an urgent matter","긴급한 사안"],
+ ["valid","형용사","유효한","a valid ticket","유효한 표"],
+ ["valuable","형용사","귀중한","valuable advice","귀중한 조언"],
+ ["vacancy","명사","공석, 빈방","a job vacancy","일자리 공석"],
+ ["warranty","명사","품질 보증(서)","a one-year warranty","1년 품질 보증"],
+ ["wholesale","명사","도매","wholesale prices","도매 가격"],
+ ["workshop","명사","워크숍, 작업장","a training workshop","교육 워크숍"]
+];
+TOEIC_SAMPLE.push(..._MORE.map(t=>({word:t[0],pos:t[1],meaning:t[2],example:t[3],exampleKo:t[4]})));
+
+/* ================= vocab test ================= */
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+let testState=null, testCfg={source:"mine",dir:"mix",count:10};
+function poolFor(src){ if(src==="toeic")return TOEIC_SAMPLE.slice(); if(src==="mine")return DB.vocab.slice(); return DB.vocab.concat(TOEIC_SAMPLE); }
+function makeQuestions(){
+  const distract=DB.vocab.concat(TOEIC_SAMPLE).filter(x=>x.word&&x.meaning);
+  let pool=poolFor(testCfg.source).filter(x=>x.word&&x.meaning);
+  shuffle(pool); pool=pool.slice(0,testCfg.count);
+  return pool.map(it=>{
+    const d=testCfg.dir==="mix"?(Math.random()<.5?"en2ko":"ko2en"):testCfg.dir;
+    const key=d==="en2ko"?"meaning":"word";
+    const prompt=d==="en2ko"?it.word:it.meaning;
+    const correct=it[key];
+    const seen=new Set([correct]);const dis=[];const others=distract.filter(x=>x!==it);shuffle(others);
+    for(const o of others){const val=o[key];if(val&&!seen.has(val)){seen.add(val);dis.push(val);}if(dis.length>=3)break;}
+    const opts=shuffle([correct,...dis]);
+    return {d,prompt,options:opts,answer:opts.indexOf(correct),word:it.word,meaning:it.meaning};
+  });
+}
+function openVocabTest(){
+  if(DB.vocab.length<4 && testCfg.source==="mine")testCfg.source="all";
+  setChrome({title:"단어 시험",back:true,backTo:"collection"});
+  $("#ctaRow").style.display="none";
+  regenTest(); view.scrollTop=0;
+}
+function regenTest(){ testState={questions:makeQuestions(),answers:{}}; renderTest(); }
+function renderTest(){
+  const qs=testState.questions;
+  const answered=Object.keys(testState.answers).length;
+  const score=qs.filter((q,i)=>testState.answers[i]===q.answer).length;
+  const done=answered===qs.length && qs.length>0;
+  const chip=(name,val,label)=>`<button class="chip ${testCfg[name]==val?"on":""}" data-cfg="${name}" data-val="${val}">${label}</button>`;
+  view.innerHTML=`
+    <div class="setup">
+      <div class="lbl">출제 방향</div>
+      <div class="chips">${chip("dir","mix","섞기")}${chip("dir","en2ko","영→한")}${chip("dir","ko2en","한→영")}</div>
+      <div class="lbl">단어 출처</div>
+      <div class="chips">${chip("source","mine","내 단어장")}${chip("source","toeic","TOEIC 샘플")}${chip("source","all","전체")}</div>
+      <div class="lbl">문항 수</div>
+      <div class="chips">${chip("count",10,"10문항")}${chip("count",20,"20문항")}${chip("count",9999,"전체")}</div>
+      <button class="btn primary" id="regen" style="margin-top:12px">새 문제 내기</button>
+    </div>
+    ${qs.length?`
+      ${done?`<div class="result-big"><div class="sc serif">${score} / ${qs.length}</div><div class="lb">${score===qs.length?"완벽해요! 🎉":score>=qs.length*0.7?"잘했어요 👍":"복습해 볼까요?"}</div></div>`:
+        `<div class="qhead" style="margin-top:16px"><span class="n">${answered}/${qs.length} 완료</span><span class="score">${score}점</span></div>`}
+      <div id="testBody">${qs.map((q,i)=>testCard(q,i)).join("")}</div>`
+      :`<div class="empty"><div class="em">🗂️</div><div class="t">출제할 단어가 부족해요</div><div class="s">‘전체’나 ‘TOEIC 샘플’을 고르거나 단어를 더 저장해 보세요.</div></div>`}
+    <div style="height:14px"></div>`;
+  view.querySelectorAll("[data-cfg]").forEach(b=>b.onclick=()=>{let v=b.dataset.val;testCfg[b.dataset.cfg]=(b.dataset.cfg==="count")?+v:v;regenTest();view.scrollTop=0;});
+  $("#regen").onclick=()=>{regenTest();view.scrollTop=0;};
+}
+function testCard(q,i){
+  const ans=testState.answers[i];const answered=ans!=null;
+  const opts=q.options.map((o,oi)=>{let cls="opt";if(answered){if(oi===q.answer)cls+=" correct";else if(oi===ans)cls+=" wrong";}
+    return `<button class="${cls}" ${answered?"disabled":""} data-tq="${i}" data-to="${oi}"><span class="k">${String.fromCharCode(65+oi)}</span><span>${esc(o)}</span></button>`;}).join("");
+  const label=q.d==="en2ko"?"알맞은 뜻을 고르세요":"알맞은 영어 단어를 고르세요";
+  return `<div class="qcard"><div class="q"><span style="font-size:11px;color:var(--muted);font-weight:700">${label}</span><br><span class="serif" style="font-size:23px">${esc(q.prompt)}</span></div>${opts}
+    ${answered?`<div class="qexp"><b>${ans===q.answer?"정답!":"오답"}</b> ${esc(q.word)} = ${esc(q.meaning)}</div>`:""}</div>`;
+}
+
+/* ================= CSV export / import ================= */
+function csvEsc(v){v=(v==null?"":String(v));return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function toCSV(headers,rows){return [headers.join(","),...rows.map(r=>headers.map(h=>csvEsc(r[h])).join(","))].join("\r\n");}
+function parseCSV(text){
+  const rows=[];let i=0,f="",row=[],q=false;text=String(text).replace(/^\uFEFF/,"");
+  while(i<text.length){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i+=2;continue;}q=false;i++;continue;}f+=c;i++;continue;}
+    if(c==='"'){q=true;i++;continue;}
+    if(c===','){row.push(f);f="";i++;continue;}
+    if(c==='\r'){i++;continue;}
+    if(c==='\n'){row.push(f);rows.push(row);row=[];f="";i++;continue;}
+    f+=c;i++;
+  }
+  if(f.length||row.length){row.push(f);rows.push(row);}
+  return rows.filter(r=>!(r.length===1&&r[0]===""));
+}
+function rowsToObjects(rows){if(!rows.length)return[];const h=rows[0].map(x=>x.trim());return rows.slice(1).map(r=>{const o={};h.forEach((k,i)=>o[k]=r[i]!=null?r[i]:"");return o;});}
+async function exportCSV(kind){
+  let headers,rows,name;
+  if(kind==="vocab"){headers=["word","pos","meaning","example","exampleKo","date"];rows=DB.vocab;name="wordbook.csv";}
+  else if(kind==="sent"){headers=["text","date"];rows=DB.sentences;name="sentences.csv";}
+  else{headers=["date","text","corrected"];rows=Object.keys(DB.entries).sort().map(k=>({date:k,text:DB.entries[k].text||"",corrected:DB.entries[k].corrected||""}));name="diary.csv";}
+  if(!rows.length){toast("내보낼 데이터가 없어요");return;}
+  const csv="\uFEFF"+toCSV(headers,rows);
+  let dl=null;try{dl=await claude.use("downloads");}catch(e){}
+  if(dl){try{await dl.save({filename:name,data:csv});toast("CSV를 저장했어요");return;}catch(e){if(e&&e.code==="cancelled")return;}}
+  showCSVFallback(name,csv);
+}
+function importCSVText(text){
+  const rows=parseCSV(text);if(rows.length<2){toast("CSV 내용을 확인해 주세요");return;}
+  const h=rows[0].map(x=>x.trim().toLowerCase());const objs=rowsToObjects(rows);let n=0;
+  const get=(o,k)=>o[k]!=null?o[k]:(o[k.toLowerCase()]!=null?o[k.toLowerCase()]:"");
+  if(h.includes("word")){
+    objs.forEach(o=>{const w=get(o,"word");if(w&&!DB.vocab.some(v=>v.word.toLowerCase()===w.toLowerCase())){DB.vocab.unshift({word:w,pos:get(o,"pos"),meaning:get(o,"meaning"),example:get(o,"example"),exampleKo:get(o,"exampleKo"),date:get(o,"date"),savedAt:Date.now()});n++;}});
+    saveDB();toast(`단어 ${n}개를 불러왔어요`);
+  }else if(h.includes("corrected")){
+    objs.forEach(o=>{const d=get(o,"date");if(d){DB.entries[d]={...(DB.entries[d]||{}),text:get(o,"text"),corrected:get(o,"corrected")||((DB.entries[d]||{}).corrected||""),updatedAt:Date.now()};n++;}});
+    saveDB();toast(`일기 ${n}일치를 불러왔어요`);
+  }else if(h.includes("text")){
+    objs.forEach(o=>{const t=get(o,"text");if(t&&!DB.sentences.some(s=>s.text===t)){DB.sentences.unshift({text:t,date:get(o,"date"),savedAt:Date.now()});n++;}});
+    saveDB();toast(`문장 ${n}개를 불러왔어요`);
+  }else{toast("알 수 없는 CSV 형식이에요");return;}
+  closeSheet();if(curTab==="collection")renderCollection();else if(curTab==="calendar")renderCalendar();
+}
+$("#csvFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>importCSVText(String(rd.result));rd.onerror=()=>toast("파일을 읽지 못했어요");rd.readAsText(f);e.target.value="";});
+function openDataSheet(){
+  sheet.innerHTML=`<div class="grab"></div>
+    <div class="word serif" style="font-size:22px">데이터 관리</div>
+    <div class="dsec"><h5>CSV 내보내기</h5><div class="drow">
+      <button class="dbtn" data-exp="vocab">단어장</button>
+      <button class="dbtn" data-exp="sent">문장수집</button>
+      <button class="dbtn" data-exp="diary">일기 기록</button></div></div>
+    <div class="dsec"><h5>CSV 불러오기</h5><div class="drow">
+      <button class="dbtn" id="impFile">파일 선택</button>
+      <button class="dbtn" id="impPaste">붙여넣기</button></div>
+    <div class="dsec"><h5>AI 설정 (claude.ai 밖에서 사용 시)</h5>
+      <div class="chips">${["claude","openai","gemini"].map(p=>`<button class="chip ${getProvider()===p?"on":""}" data-prov="${p}">${p==="claude"?"Claude":p==="openai"?"OpenAI":"Gemini"}</button>`).join("")}</div>
+      <input id="akey" type="password" placeholder="API 키 붙여넣기" value="${esc(getApiKey())}" style="width:100%;margin-top:6px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
+      <input id="amodel" type="text" placeholder="모델 (비우면 기본값: ${esc(defModel(getProvider()))})" value="${esc(localStorage.getItem("endiary.model")||"")}" style="width:100%;margin-top:8px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
+      <button class="btn primary" id="saveKey" style="margin-top:10px">AI 설정 저장</button>
+      <div style="color:var(--muted);font-size:11.5px;margin-top:8px">${keyHelp(getProvider())} 키는 이 브라우저에만 저장돼요. claude.ai에서 열면 키 없이 자동 동작합니다.</div></div>
+    <div style="height:8px"></div>`;
+  sheet.classList.add("show");scrim.classList.add("show");
+  sheet.querySelectorAll("[data-exp]").forEach(b=>b.onclick=()=>exportCSV(b.dataset.exp));
+  $("#impFile").onclick=()=>$("#csvFile").click();
+  $("#impPaste").onclick=openPasteImport;
+  sheet.querySelectorAll("[data-prov]").forEach(b=>b.onclick=()=>{try{const kv=$("#akey"),mv=$("#amodel");localStorage.setItem("endiary.apikey",(kv&&kv.value||"").trim());localStorage.setItem("endiary.model",(mv&&mv.value||"").trim());localStorage.setItem("endiary.provider",b.dataset.prov);}catch(e){}openDataSheet();});
+  $("#saveKey").onclick=()=>{try{localStorage.setItem("endiary.apikey",$("#akey").value.trim());localStorage.setItem("endiary.model",$("#amodel").value.trim());}catch(e){}closeSheet();toast("AI 설정을 저장했어요");if(curTab==="today")renderToday();};
+}
+function openPasteImport(){
+  sheet.innerHTML=`<div class="grab"></div><div class="word serif" style="font-size:20px">CSV 붙여넣기</div>
+    <textarea id="pasteArea" style="width:100%;height:190px;margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px;font-family:var(--font-ui);font-size:13px;background:var(--surface);color:var(--ink)" placeholder="CSV 내용을 붙여넣으세요. 첫 줄은 헤더 (예: word,pos,meaning,example,exampleKo,date)"></textarea>
+    <div class="sactions"><button class="btn primary" id="doImport">불러오기</button></div>`;
+  $("#doImport").onclick=()=>{const t=$("#pasteArea").value.trim();if(t)importCSVText(t);else toast("내용을 붙여넣어 주세요");};
+}
+function showCSVFallback(name,csv){
+  sheet.innerHTML=`<div class="grab"></div><div class="word serif" style="font-size:19px">${esc(name)}</div>
+    <div style="color:var(--muted);font-size:12.5px;margin-top:4px">파일 저장을 쓸 수 없어 텍스트로 표시했어요. 길게 눌러 전체 선택 후 복사하세요.</div>
+    <textarea readonly style="width:100%;height:210px;margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:12px;font-family:var(--font-ui);font-size:12px;background:var(--surface-2);color:var(--ink)">${esc(csv)}</textarea>`;
+  sheet.classList.add("show");scrim.classList.add("show");
+  const t=sheet.querySelector("textarea");setTimeout(()=>{t.focus();t.select();},50);
+}
+
+/* boot */
+renderToday();
+if("serviceWorker" in navigator){ window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); }); }
+</script>
+</body>
+</html>
