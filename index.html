@@ -264,19 +264,19 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 <script>
 "use strict";
 /* ---------------- capability: sample (AI) ---------------- */
-const APP_VERSION="2026-09-10-groq";
+const APP_VERSION="2026-09-10-groq2";
 let SAMPLE=null;
 (async()=>{ try{ if(window.claude&&claude.use){ SAMPLE=await claude.use("sample"); } }catch(e){} if(curTab==="today")renderToday(); })();
 function getApiKey(){try{return (localStorage.getItem("endiary.apikey")||"").trim();}catch(e){return"";}}
 function getKey(p){try{return (localStorage.getItem("endiary.key."+p)||"").trim();}catch(e){return "";}}
 function setKey(p,v){try{localStorage.setItem("endiary.key."+p,(v||"").trim());}catch(e){}}
 function getModelFor(p){try{return (localStorage.getItem("endiary.model."+p)||"").trim();}catch(e){return "";}}
-const GROQ_MODELS=["llama-3.3-70b-versatile","llama-3.1-8b-instant","openai/gpt-oss-20b"];
-const GROQ_DEFAULT="llama-3.3-70b-versatile";
+const GROQ_MODELS=["openai/gpt-oss-120b","openai/gpt-oss-20b","qwen/qwen3.6-27b"];
+const GROQ_DEFAULT="openai/gpt-oss-120b";
 const GROQ_LABELS={
- "llama-3.3-70b-versatile":"Llama 3.3 70B — 품질 좋음 (기본)",
- "llama-3.1-8b-instant":"Llama 3.1 8B — 빠름·한도 큼",
- "openai/gpt-oss-20b":"GPT-OSS 20B — 대체용"
+ "openai/gpt-oss-120b":"GPT-OSS 120B — 품질 좋음 (기본)",
+ "openai/gpt-oss-20b":"GPT-OSS 20B — 빠름",
+ "qwen/qwen3.6-27b":"Qwen 3.6 27B — 대체용"
 };
 function aiOn(){return !!SAMPLE || !!getKey("groq");}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -373,7 +373,6 @@ Diary:
 /* Groq call (OpenAI-compatible): one model, 5s wait, up to 10 retries */
 async function callGroq(key,prompt){
   const instr=prompt+"\n\nReturn ONLY the JSON object. No markdown fences, no extra text.";
-  const model=getModelFor("groq")||GROQ_DEFAULT;
   const retryable=(status,m)=>status===429||status===503||status===500||status===502||/rate|overload|unavailable|try again|capacity|busy/i.test(m||"");
   function retryAfterFrom(res){ return parseFloat(res.headers&&res.headers.get&&res.headers.get("retry-after"))||0; }
   const loaderShown=()=>{try{return $("#loader").classList.contains("show");}catch(_){return false;}};
@@ -385,28 +384,36 @@ async function callGroq(key,prompt){
     return JSON.parse(txt);
   }
   const MAX=10;
+  const selected=getModelFor("groq")||GROQ_DEFAULT;
+  const cands=[selected,...GROQ_MODELS].filter((m,i,a)=>m&&a.indexOf(m)===i);
   let lastErr=null;
-  for(let a=0;a<MAX;a++){
-    if(a>0){
-      const ra=(lastErr&&lastErr.retryAfter)||0;
-      const waitMs=Math.min(Math.max(5000, ra*1000+500), 30000);
-      let s=Math.ceil(waitMs/1000);
-      while(s>0){ setStatus(`${s}초 뒤 재시도… (${a}/${MAX-1})`); await sleep(1000); s--; }
-      setStatus("검사하는 중…");
+  for(let ci=0; ci<cands.length; ci++){
+    const model=cands[ci];
+    if(ci>0) setStatus("다른 모델로 시도…");
+    let toNext=false;
+    for(let a=0;a<MAX && !toNext;a++){
+      if(a>0){
+        const ra=(lastErr&&lastErr.retryAfter)||0;
+        const waitMs=Math.min(Math.max(5000, ra*1000+500), 30000);
+        let s=Math.ceil(waitMs/1000);
+        while(s>0){ setStatus(`${s}초 뒤 재시도… (${a}/${MAX-1})`); await sleep(1000); s--; }
+        setStatus("검사하는 중…");
+      }
+      let res=null;
+      try{
+        res=await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+key},body:JSON.stringify({model,messages:[{role:"user",content:instr}],temperature:0.3,max_tokens:2000})});
+      }catch(netErr){ lastErr={code:"network",message:"네트워크 오류(브라우저 차단 가능)",retryable:true,status:0}; continue; }
+      if(res.ok){
+        const d=await res.json();
+        const txt=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||"";
+        try{ return parse(txt); }catch(pe){ lastErr={code:"parse",message:"응답 파싱 실패",retryable:true,status:0}; continue; }
+      }
+      let b=null; try{ b=await res.json(); }catch(_){}
+      const m=(b&&b.error&&b.error.message)||"";
+      lastErr={code:"http_"+res.status, message:m, retryable:retryable(res.status,m), retryAfter:retryAfterFrom(res), status:res.status};
+      if(res.status===404){ toNext=true; break; }   // 이 모델 없음/종료 → 다음 유효 모델로
+      if(!lastErr.retryable) throw lastErr;           // 401(키오류) 등 → 즉시 중단
     }
-    let res=null;
-    try{
-      res=await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+key},body:JSON.stringify({model,messages:[{role:"user",content:instr}],temperature:0.3,max_tokens:2000})});
-    }catch(netErr){ lastErr={code:"network",message:"네트워크 오류(브라우저 차단 가능)",retryable:true,status:0}; continue; }
-    if(res.ok){
-      const d=await res.json();
-      const txt=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||"";
-      try{ return parse(txt); }catch(pe){ lastErr={code:"parse",message:"응답 파싱 실패",retryable:true,status:0}; continue; }
-    }
-    let b=null; try{ b=await res.json(); }catch(_){}
-    const m=(b&&b.error&&b.error.message)||"";
-    lastErr={code:"http_"+res.status, message:m, retryable:retryable(res.status,m), retryAfter:retryAfterFrom(res), status:res.status};
-    if(!lastErr.retryable) throw lastErr;   // 401(키오류)·404(모델) 등 → 즉시 중단
   }
   throw lastErr||{code:"error"};
 }
@@ -1286,13 +1293,29 @@ function openDataSheet(){
         ${GROQ_MODELS.map(id=>`<option value="${id}" ${((getModelFor("groq")||GROQ_DEFAULT)===id)?"selected":""}>${GROQ_LABELS[id]||id}</option>`).join("")}
       </select>
       <button class="btn primary" id="saveKeys" style="margin-top:12px">저장</button>
-      <div style="color:var(--muted);font-size:11.5px;margin-top:8px;line-height:1.6">Groq은 <b>무료·카드 불필요</b>입니다. 키 발급: <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color:var(--brand)">console.groq.com/keys</a>. 막히면 5초 간격으로 최대 10번 자동 재시도합니다. 키는 이 브라우저에만 저장돼요.<br><span style="opacity:.7">버전 ${APP_VERSION}</span></div></div>
+      <div style="color:var(--muted);font-size:11.5px;margin-top:8px;line-height:1.6"><b>Groq은 무료·카드 불필요</b>. 키 발급: <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color:var(--brand)">console.groq.com/keys</a>.<br><b>GPT-OSS</b>는 OpenAI가 공개한 오픈모델을 Groq이 무료로 호스팅하는 것 — <b>Groq 키로 동작</b>(OpenAI 키 아님)이라 무료입니다. 옛 Llama 모델은 2026-08 종료돼 지금은 GPT-OSS를 씁니다.<br><span style="opacity:.7">버전 ${APP_VERSION}</span></div></div>
     <div style="height:8px"></div>`;
   sheet.classList.add("show");scrim.classList.add("show");
   sheet.querySelectorAll("[data-exp]").forEach(b=>b.onclick=()=>exportCSV(b.dataset.exp));
   $("#impFile").onclick=()=>$("#csvFile").click();
   $("#impPaste").onclick=openPasteImport;
   $("#saveKeys").onclick=()=>{setKey("groq",$("#kgroq").value);try{localStorage.setItem("endiary.model.groq",$("#mgroq").value);}catch(e){}closeSheet();toast("AI 설정을 저장했어요");if(curTab==="today")renderToday();};
+  loadGroqModelsInto("#mgroq");   // 실제 사용 가능한 모델을 라이브로 채워 넣기(종료 모델 방지)
+}
+async function loadGroqModelsInto(sel){
+  const key=getKey("groq"); if(!key) return;
+  let ids=null;
+  try{
+    const res=await fetch("https://api.groq.com/openai/v1/models",{headers:{authorization:"Bearer "+key}});
+    if(res.ok){ const d=await res.json(); ids=(d.data||[]).map(x=>x.id).filter(id=>id && !/whisper|tts|guard|prompt-guard|playai|embed|compound/i.test(id)); }
+  }catch(_){}
+  if(!ids||!ids.length) return;
+  const el=$(sel); if(!el) return;
+  const cur=getModelFor("groq")||GROQ_DEFAULT;
+  const prefer=(id)=>/gpt-oss-120b/.test(id)?0:/gpt-oss-20b/.test(id)?1:/gpt-oss/.test(id)?2:/qwen/.test(id)?3:4;
+  ids.sort((a,b)=>prefer(a)-prefer(b)||a.localeCompare(b));
+  el.innerHTML=ids.map(id=>`<option value="${id}" ${cur===id?"selected":""}>${GROQ_LABELS[id]||id}</option>`).join("");
+  if(!ids.includes(cur)) el.value=ids[0];
 }
 function openPasteImport(){
   sheet.innerHTML=`<div class="grab"></div><div class="word serif" style="font-size:20px">CSV 붙여넣기</div>
