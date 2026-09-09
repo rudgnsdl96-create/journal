@@ -275,12 +275,13 @@ function keyHelp(p){
 }
 function getModel(){try{const m=(localStorage.getItem("endiary.model")||"").trim();return m||defModel(getProvider());}catch(e){return defModel(getProvider());}}
 function aiOn(){return !!SAMPLE || !!getApiKey();}
-async function askJSON(prompt,tier){
-  if(SAMPLE){ return await SAMPLE.json(prompt,{modelTier:tier||"default",cache:false}); }
-  const key=getApiKey(); if(!key) throw {code:"no_ai"};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function _remoteJSON(prompt,key,tier){
   const provider=getProvider(), model=getModel();
   const instr=prompt+"\n\nReturn ONLY the JSON object. No markdown fences, no extra text.";
-  async function readErr(res){let m="";try{const eb=await res.json();m=(eb.error&&eb.error.message)||"";}catch(_){}return {code:res.status===429?"rate_limited":"http_"+res.status,message:m};}
+  async function readErr(res){let m="";try{const eb=await res.json();m=(eb.error&&eb.error.message)||"";}catch(_){}
+    const retryable=res.status===429||res.status===503||res.status===500||/high demand|overload|unavailable|try again|rate|quota/i.test(m);
+    return {code:res.status===429?"rate_limited":"http_"+res.status,message:m,retryable};}
   let txt="";
   if(provider==="openai"){
     const res=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+key},body:JSON.stringify({model,messages:[{role:"user",content:instr}],response_format:{type:"json_object"},max_tokens:1600})});
@@ -306,6 +307,17 @@ async function askJSON(prompt,tier){
   const s=txt.indexOf("{"),e=txt.lastIndexOf("}"); if(s>=0&&e>=0)txt=txt.slice(s,e+1);
   if(!txt) throw {code:"empty",message:"AI가 빈 응답을 반환했어요"};
   return JSON.parse(txt);
+}
+async function askJSON(prompt,tier){
+  if(SAMPLE){ return await SAMPLE.json(prompt,{modelTier:tier||"default",cache:false}); }
+  const key=getApiKey(); if(!key) throw {code:"no_ai"};
+  let lastErr=null;
+  for(let attempt=0;attempt<3;attempt++){
+    if(attempt>0) await sleep(1000*attempt+500);
+    try{ return await _remoteJSON(prompt,key,tier); }
+    catch(err){ lastErr=err; if(!err||!err.retryable) throw err; }
+  }
+  throw lastErr;
 }
 
 /* ---------------- storage ---------------- */
@@ -342,6 +354,9 @@ function wrapWords(text){
   }).join("");
 }
 function splitSentences(t){return (t.match(/[^.!?]+[.!?]*/g)||[t]).map(s=>s.trim()).filter(Boolean);}
+function normPlain(s){return (s||"").toLowerCase().replace(/[.,!?;:'’"()\-\s]/g,"");}
+function isMinorFix(o,c){ if(!o||!c) return false; return normPlain(o)===normPlain(c); }
+function applyFix(e,orig,corr){ if(!e||!orig) return false; const t=e.text||""; const idx=t.indexOf(orig); if(idx<0) return false; e.text=t.slice(0,idx)+corr+t.slice(idx+orig.length); e.updatedAt=Date.now(); return true; }
 
 /* ---------------- word diff (LCS) ---------------- */
 function tokz(s){return (s||"").trim().split(/\s+/).filter(Boolean);}
@@ -387,7 +402,7 @@ Return ONLY a JSON object with this exact shape:
    {"question":"한국어 지시문 또는 빈칸(___) 포함 영어 문장","options":["보기1","보기2","보기3","보기4"],"answer":0,"explain":"한국어 해설 한 문장"}
  ]
 }
-Rules: 'answer' is the 0-based index of the correct option. Make 3 to 6 quiz items based ONLY on the actual mistakes (test the correct form vs the learner's wrong form). If the diary is already correct, use "corrections":[] and "quiz":[]. Keep explanations in Korean, concise.
+Rules: 'answer' is the 0-based index of the correct option. Apply ALL fixes (including capitalization, punctuation, spacing, apostrophes) silently in "corrected". But in "corrections" and "quiz", include ONLY meaningful errors: grammar, verb tense/form, articles, prepositions, word choice, word order, singular/plural, and missing or extra words. Do NOT list capitalization / punctuation / spacing / apostrophe-only changes. Make 3 to 6 quiz items based ONLY on those meaningful errors (test the correct form vs the learner's wrong form). If there are no meaningful errors, use "corrections":[] and "quiz":[]. Keep explanations in Korean, concise.
 Diary:
 """${text}"""`;
   return await askJSON(prompt,"default");
@@ -460,7 +475,7 @@ async function doCheck(){
     const r=await aiCheck(text);
     const e=getEntry(TODAY_KEY)||{};
     e.text=text; e.corrected=r.corrected||text;
-    e.corrections=Array.isArray(r.corrections)?r.corrections:[];
+    e.corrections=(Array.isArray(r.corrections)?r.corrections:[]).filter(c=>c&&c.original&&c.corrected&&!isMinorFix(c.original,c.corrected));
     e.quiz=Array.isArray(r.quiz)?r.quiz:[];
     e.quizState={}; e.checkedAt=Date.now();
     DB.entries[TODAY_KEY]=e; saveDB();
@@ -507,6 +522,10 @@ function renderResult(){
         <div class="col"><h4>쓴 글</h4><div class="body">${renderDiffCol(diff,"left")||esc(e.text)}</div></div>
         <div class="col after"><h4>고친 글</h4><div class="body">${renderDiffCol(diff,"right")||esc(e.corrected)}</div></div>
       </div>
+      <div class="rowbtns">
+        <button class="btn primary" data-applyall="1">전체 교정 적용</button>
+        <button class="btn ghost" data-saveall="1">전체 문장 저장</button>
+      </div>
       <div class="section-title">고친 부분 ${corr.length?`(${corr.length})`:""}</div>
       ${corr.length?corr.map((c,i)=>correctionCard(c,i)).join(""):`<div class="card"><div class="exp">고칠 부분이 없어요. 잘 쓰셨어요! 👏</div></div>`}
       <div style="height:10px"></div>`;
@@ -528,7 +547,7 @@ function correctionCard(c,i){
     <span class="tag">${esc(c.type||"교정")}</span>
     <div class="fixline"><span class="o">${esc(c.original||"")}</span><span class="arrow">→</span><span class="c">${esc(c.corrected||"")}</span></div>
     <div class="exp">${esc(c.explanation||"")}</div>
-    <button class="savebtn" data-savesent="${i}">＋ 이 문장 문장수집에 저장</button>
+    <button class="savebtn" data-applyone="${i}">✓ 이 문장 적용</button>
   </div>`;
 }
 function quizCard(q,i,ans){
@@ -562,7 +581,7 @@ function closeSheet(){sheet.classList.remove("show");scrim.classList.remove("sho
 scrim.onclick=closeSheet;
 function localLookup(word){
   const w=(word||"").toLowerCase();
-  const hit=DB.vocab.find(x=>(x.word||"").toLowerCase()===w) || TOEIC_SAMPLE.find(x=>(x.word||"").toLowerCase()===w);
+  const hit=DB.vocab.find(x=>(x.word||"").toLowerCase()===w) || TOEIC_SAMPLE.find(x=>(x.word||"").toLowerCase()===w) || BASIC.find(x=>(x.word||"").toLowerCase()===w);
   return hit?{word:hit.word,pos:hit.pos||"",ipa:"",meaning:hit.meaning||"",example:hit.example||"",exampleKo:hit.exampleKo||"",offline:true}:null;
 }
 async function openWordSheet(word,ctx){
@@ -584,10 +603,8 @@ async function openWordSheet(word,ctx){
     ${ctx?`<div class="ctx">“${esc(ctx)}”</div>`:""}
     <div class="sactions">
       <button class="btn primary" id="saveWord">단어장에 저장</button>
-      <button class="btn ghost" id="saveSent">문장 저장</button>
     </div>`;
   $("#saveWord").onclick=()=>{ addVocab({word:def?.word||w,pos:def?.pos||"",meaning:def?.meaning||"",example:def?.example||"",exampleKo:def?.exampleKo||""}); closeSheet(); toast("단어장에 저장했어요"); };
-  $("#saveSent").onclick=()=>{ addSentence(ctx||""); closeSheet(); toast("문장수집에 저장했어요"); };
 }
 function addVocab(v){
   if(!v.word)return;
@@ -632,7 +649,7 @@ function renderCalendar(){
 
 /* ---------------- READER (past entry) ---------------- */
 function openReader(k){
-  curEntryKey=k;
+  curEntryKey=k; resultKey=null;
   const e=DB.entries[k]; if(!e)return;
   const d=parseKey(k);
   setChrome({title:`${d.getMonth()+1}.${d.getDate()} (${DOW_KO[d.getDay()]})`,back:true,backTo:"calendar"});
@@ -747,14 +764,19 @@ document.addEventListener("click",e=>{
     if(testState&&testState.answers[qi]==null){ testState.answers[qi]=oi; const st=view.scrollTop; renderTest(); view.scrollTop=st; }
     return;
   }
-  const ss=e.target.closest("[data-savesent]"); if(ss){
-    const e3=getEntry(resultKey||curEntryKey); const c=e3&&e3.corrections&&e3.corrections[+ss.dataset.savesent];
-    if(c){ // save the corrected sentence containing this fix
-      const target=(c.corrected||"").trim();
-      const full=(e3.corrected||""); const sents=splitSentences(full);
-      const sent=sents.find(s=>s.includes(target))||target;
-      addSentence(sent); ss.textContent="✓ 저장됨"; ss.classList.add("done");
-    }
+  const ao=e.target.closest("[data-applyone]"); if(ao){
+    const e3=getEntry(resultKey||curEntryKey); const idx=+ao.dataset.applyone; const c=e3&&e3.corrections&&e3.corrections[idx];
+    if(c){ const done=applyFix(e3,c.original,c.corrected); if(done){ e3.corrections.splice(idx,1); saveDB(); toast("적용했어요"); const st=view.scrollTop; renderResult(); view.scrollTop=st; } else { toast("이미 적용된 문장이에요"); } }
+    return;
+  }
+  const aa=e.target.closest("[data-applyall]"); if(aa){
+    const e3=getEntry(resultKey||curEntryKey);
+    if(e3){ e3.text=e3.corrected||e3.text; e3.corrections=[]; e3.updatedAt=Date.now(); saveDB(); toast("전체 교정을 적용했어요"); renderResult(); view.scrollTop=0; }
+    return;
+  }
+  const sa=e.target.closest("[data-saveall]"); if(sa){
+    const e3=getEntry(resultKey||curEntryKey);
+    if(e3){ const sents=splitSentences(e3.corrected||e3.text||""); let n=0; sents.forEach(s=>{ if(s&&!DB.sentences.some(x=>x.text===s)){ DB.sentences.unshift({text:s,date:resultKey||curEntryKey,savedAt:Date.now()}); n++; } }); saveDB(); toast(n?`문장 ${n}개를 저장했어요`:"이미 저장돼 있어요"); }
     return;
   }
 });
@@ -1002,6 +1024,122 @@ const _MORE=[
  ["workshop","명사","워크숍, 작업장","a training workshop","교육 워크숍"]
 ];
 TOEIC_SAMPLE.push(..._MORE.map(t=>({word:t[0],pos:t[1],meaning:t[2],example:t[3],exampleKo:t[4]})));
+
+/* ================= basic offline dictionary (일기 기초 단어) ================= */
+const _BASIC=[
+ ["hello","감탄사","안녕(만났을 때 인사)","Hello, nice to meet you.","안녕하세요, 만나서 반가워요."],
+ ["hi","감탄사","안녕(가벼운 인사)","Hi! How are you?","안녕! 잘 지내?"],
+ ["today","명사·부사","오늘","Today was a good day.","오늘은 좋은 날이었다."],
+ ["yesterday","명사·부사","어제","I was busy yesterday.","나는 어제 바빴다."],
+ ["tomorrow","명사·부사","내일","See you tomorrow.","내일 봐."],
+ ["morning","명사","아침","I run every morning.","나는 매일 아침 달린다."],
+ ["afternoon","명사","오후","We met in the afternoon.","우리는 오후에 만났다."],
+ ["evening","명사","저녁","I read in the evening.","나는 저녁에 책을 읽는다."],
+ ["night","명사","밤","Good night.","잘 자."],
+ ["time","명사","시간","I don't have time.","나는 시간이 없다."],
+ ["day","명사","하루, 날","Have a nice day.","좋은 하루 보내."],
+ ["week","명사","주, 일주일","See you next week.","다음 주에 봐."],
+ ["weekend","명사","주말","I relax on the weekend.","나는 주말에 쉰다."],
+ ["today","명사","오늘","","" ],
+ ["test","명사·동사","시험; 시험하다","I have a test today.","나는 오늘 시험이 있다."],
+ ["exam","명사","시험","I passed the exam.","나는 시험에 합격했다."],
+ ["class","명사","수업, 반","My class starts at nine.","내 수업은 9시에 시작한다."],
+ ["study","동사·명사","공부하다; 공부","I study English.","나는 영어를 공부한다."],
+ ["work","동사·명사","일하다; 일","I work from home.","나는 재택근무를 한다."],
+ ["go","동사","가다","I go to school.","나는 학교에 간다."],
+ ["come","동사","오다","Please come here.","여기로 오세요."],
+ ["get","동사","얻다, 받다, ~하게 되다","I got a gift.","나는 선물을 받았다."],
+ ["make","동사","만들다","I made dinner.","나는 저녁을 만들었다."],
+ ["do","동사","하다","I did my homework.","나는 숙제를 했다."],
+ ["have","동사","가지다, 있다","I have a dog.","나는 개를 키운다."],
+ ["eat","동사","먹다","I ate lunch.","나는 점심을 먹었다."],
+ ["drink","동사","마시다","I drink coffee.","나는 커피를 마신다."],
+ ["sleep","동사·명사","자다; 잠","I slept well.","나는 잘 잤다."],
+ ["read","동사","읽다","I read a book.","나는 책을 읽었다."],
+ ["write","동사","쓰다","I write a diary.","나는 일기를 쓴다."],
+ ["play","동사","놀다, (운동을) 하다","I play soccer.","나는 축구를 한다."],
+ ["watch","동사","보다, 시청하다","I watched a movie.","나는 영화를 봤다."],
+ ["listen","동사","듣다","I listen to music.","나는 음악을 듣는다."],
+ ["talk","동사","말하다, 대화하다","We talked a lot.","우리는 많이 이야기했다."],
+ ["meet","동사","만나다","I met a friend.","나는 친구를 만났다."],
+ ["walk","동사·명사","걷다; 산책","I walked to work.","나는 걸어서 출근했다."],
+ ["run","동사","달리다","I run in the park.","나는 공원에서 달린다."],
+ ["buy","동사","사다","I bought a book.","나는 책을 샀다."],
+ ["cook","동사","요리하다","I cooked pasta.","나는 파스타를 만들었다."],
+ ["clean","동사·형용사","청소하다; 깨끗한","I cleaned my room.","나는 방을 청소했다."],
+ ["feel","동사","느끼다","I feel tired.","나는 피곤하다."],
+ ["think","동사","생각하다","I think so.","나도 그렇게 생각해."],
+ ["know","동사","알다","I know him.","나는 그를 안다."],
+ ["want","동사","원하다","I want to rest.","나는 쉬고 싶다."],
+ ["need","동사","필요하다","I need help.","나는 도움이 필요하다."],
+ ["like","동사","좋아하다","I like tea.","나는 차를 좋아한다."],
+ ["love","동사·명사","사랑하다; 사랑","I love music.","나는 음악을 아주 좋아한다."],
+ ["happy","형용사","행복한, 기쁜","I feel happy.","나는 행복하다."],
+ ["sad","형용사","슬픈","I felt sad.","나는 슬펐다."],
+ ["tired","형용사","피곤한","I am tired.","나는 피곤하다."],
+ ["angry","형용사","화난","She was angry.","그녀는 화가 났다."],
+ ["good","형용사","좋은","It was a good day.","좋은 하루였다."],
+ ["bad","형용사","나쁜","I had a bad day.","나는 힘든 하루를 보냈다."],
+ ["great","형용사","훌륭한, 아주 좋은","That's great!","정말 좋다!"],
+ ["nice","형용사","좋은, 멋진","Nice to meet you.","만나서 반가워요."],
+ ["fun","명사·형용사","재미; 재미있는","It was fun.","재미있었다."],
+ ["boring","형용사","지루한","The class was boring.","수업이 지루했다."],
+ ["busy","형용사","바쁜","I was busy today.","나는 오늘 바빴다."],
+ ["free","형용사","한가한, 무료의","I am free tonight.","나는 오늘 밤 한가하다."],
+ ["hot","형용사","더운, 뜨거운","It is hot today.","오늘은 덥다."],
+ ["cold","형용사","추운, 차가운","It is cold outside.","밖은 춥다."],
+ ["warm","형용사","따뜻한","The weather is warm.","날씨가 따뜻하다."],
+ ["rain","명사·동사","비; 비가 오다","It started to rain.","비가 오기 시작했다."],
+ ["rainy","형용사","비 오는","It was a rainy day.","비 오는 날이었다."],
+ ["sunny","형용사","화창한","It is sunny today.","오늘은 화창하다."],
+ ["snow","명사·동사","눈; 눈이 오다","It began to snow.","눈이 오기 시작했다."],
+ ["weather","명사","날씨","The weather is nice.","날씨가 좋다."],
+ ["friend","명사","친구","I met my friend.","나는 친구를 만났다."],
+ ["family","명사","가족","I love my family.","나는 가족을 사랑한다."],
+ ["mother","명사","어머니","My mother cooks well.","우리 어머니는 요리를 잘하신다."],
+ ["father","명사","아버지","My father is kind.","우리 아버지는 친절하시다."],
+ ["home","명사","집","I stayed home.","나는 집에 있었다."],
+ ["house","명사","집, 주택","We bought a house.","우리는 집을 샀다."],
+ ["school","명사","학교","I went to school.","나는 학교에 갔다."],
+ ["office","명사","사무실","I was at the office.","나는 사무실에 있었다."],
+ ["city","명사","도시","I live in a big city.","나는 대도시에 산다."],
+ ["food","명사","음식","The food was good.","음식이 맛있었다."],
+ ["coffee","명사","커피","I need coffee.","나는 커피가 필요하다."],
+ ["tea","명사","차","I made some tea.","나는 차를 끓였다."],
+ ["water","명사","물","Drink more water.","물을 더 마셔."],
+ ["movie","명사","영화","We watched a movie.","우리는 영화를 봤다."],
+ ["music","명사","음악","I love music.","나는 음악을 좋아한다."],
+ ["book","명사","책","I read a good book.","나는 좋은 책을 읽었다."],
+ ["phone","명사","전화, 휴대폰","I lost my phone.","나는 휴대폰을 잃어버렸다."],
+ ["money","명사","돈","I saved money.","나는 돈을 모았다."],
+ ["dog","명사","개","I walked my dog.","나는 개를 산책시켰다."],
+ ["cat","명사","고양이","My cat is cute.","우리 고양이는 귀엽다."],
+ ["teacher","명사","선생님","My teacher is kind.","우리 선생님은 친절하시다."],
+ ["student","명사","학생","I am a student.","나는 학생이다."],
+ ["people","명사","사람들","Many people came.","많은 사람들이 왔다."],
+ ["person","명사","사람","She is a kind person.","그녀는 친절한 사람이다."],
+ ["place","명사","장소","This is a nice place.","여기는 좋은 곳이다."],
+ ["thing","명사","것, 물건","I have many things to do.","나는 할 일이 많다."],
+ ["trip","명사","여행","I took a short trip.","나는 짧은 여행을 했다."],
+ ["travel","동사·명사","여행하다; 여행","I love to travel.","나는 여행하는 것을 좋아한다."],
+ ["holiday","명사","휴일, 휴가","It was a holiday.","휴일이었다."],
+ ["health","명사","건강","Health is important.","건강이 중요하다."],
+ ["sick","형용사","아픈","I felt sick.","나는 아팠다."],
+ ["doctor","명사","의사","I saw a doctor.","나는 의사에게 진료받았다."],
+ ["hospital","명사","병원","I went to the hospital.","나는 병원에 갔다."],
+ ["beautiful","형용사","아름다운","The sky was beautiful.","하늘이 아름다웠다."],
+ ["difficult","형용사","어려운","The test was difficult.","시험이 어려웠다."],
+ ["easy","형용사","쉬운","The quiz was easy.","퀴즈가 쉬웠다."],
+ ["early","형용사·부사","이른; 일찍","I woke up early.","나는 일찍 일어났다."],
+ ["late","형용사·부사","늦은; 늦게","I was late for work.","나는 회사에 지각했다."],
+ ["really","부사","정말로","I'm really tired.","나는 정말 피곤하다."],
+ ["very","부사","매우","It was very cold.","매우 추웠다."],
+ ["because","접속사","~때문에","I stayed home because it rained.","비가 와서 집에 있었다."],
+ ["but","접속사","그러나","I was tired, but happy.","나는 피곤했지만 행복했다."],
+ ["with","전치사","~와 함께","I went with my friend.","나는 친구와 함께 갔다."],
+ ["about","전치사·부사","~에 대해; 약","We talked about work.","우리는 일에 대해 이야기했다."]
+];
+const BASIC=_BASIC.filter(t=>t[2]).map(t=>({word:t[0],pos:t[1],meaning:t[2],example:t[3]||"",exampleKo:t[4]||""}));
 
 /* ================= vocab test ================= */
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
