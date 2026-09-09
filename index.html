@@ -148,10 +148,10 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 .calhead .m{font-family:var(--font-serif);font-size:23px;font-weight:600;min-width:0}
 .calnav{display:flex;gap:6px;flex:none}
 .calnav button{min-width:38px;height:38px;padding:0 12px;border-radius:11px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);font-size:15px;font-weight:600;color:var(--brand);white-space:nowrap}
-.grid7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.grid7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:48px;gap:5px}
 .dowh{text-align:center;font-size:11px;color:var(--muted);font-weight:600;padding:6px 0 2px;min-width:0}
 .dowh.sun{color:var(--del)}
-.cell{aspect-ratio:1;min-width:0;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:15px;position:relative;background:transparent;color:var(--ink)}
+.cell{height:48px;min-width:0;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:15px;position:relative;background:transparent;color:var(--ink)}
 .cell.empty{visibility:hidden}
 .cell.has{background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
 .cell.today{outline:2px solid var(--brand);outline-offset:-2px}
@@ -440,34 +440,41 @@ async function callProvider(provider,key,prompt){
     return JSON.parse(txt);
   }
   const ladder=geminiLadder();
+  const startT=Date.now(), DEADLINE=95000;
+  async function countdown(model,ms){
+    let s=Math.ceil(ms/1000);
+    while(s>0){ setStatus(`${shortName(model)} · ${s}초 뒤 자동 재시도… (무료 한도 회복 대기)`); await sleep(1000); s--; }
+    setStatus("검사하는 중…");
+  }
   let lastErr=null;
   for(let mi=0; mi<ladder.length; mi++){
     const model=ladder[mi];
     if(mi>0) setStatus(`${shortName(model)} 모델로 전환…`);
-    for(let a=0;a<4;a++){
-      if(a>0){
-        const waitMs=Math.min(Math.max(1200*a+400,(lastErr&&lastErr.retryAfter||0)*1000,1500),20000);
-        setStatus(`${shortName(model)} · ${Math.ceil(waitMs/1000)}초 뒤 재시도 (${a}/4)…`);
-        await sleep(waitMs);
-        setStatus("검사하는 중…");
-      }
+    let next=false;
+    for(let a=0;a<3 && !next;a++){
       let res=null;
-      try{
-        res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:instr}]}]})});
-      }catch(netErr){ lastErr={code:"network",message:"네트워크 오류",retryable:true}; continue; }
-      if(res.ok){
+      try{ res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:instr}]}]})}); }
+      catch(netErr){ lastErr={code:"network",message:"네트워크 오류",retryable:true,status:0}; }
+      if(res&&res.ok){
         const d=await res.json();
         const txt=(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]&&d.candidates[0].content.parts[0].text)||"";
-        try{ return parse(txt); }catch(pe){ lastErr={code:"parse",message:"응답 파싱 실패",retryable:true}; continue; }
+        try{ return parse(txt); }catch(pe){ lastErr={code:"parse",message:"응답 파싱 실패",retryable:true,status:0}; }
+      }else if(res){
+        let b=null; try{ b=await res.json(); }catch(_){}
+        const m=(b&&b.error&&b.error.message)||"";
+        lastErr={code:"http_"+res.status,message:m,retryable:retryable(res.status,m),retryAfter:retryAfterFrom(res,b),status:res.status};
+        if(res.status===404){ next=true; break; }        // 이 모델 없음 → 다음 모델
+        if(!lastErr.retryable) throw lastErr;             // 키/요청 오류 → 중단
       }
-      let b=null; try{ b=await res.json(); }catch(_){}
-      const m=(b&&b.error&&b.error.message)||"";
-      lastErr={code:"http_"+res.status,message:m,retryable:retryable(res.status,m),retryAfter:retryAfterFrom(res,b),status:res.status};
-      if(res.status===404) break;         // 이 모델 없음 → 다음 모델로
-      if(!lastErr.retryable) throw lastErr; // 키 오류 등 → 중단
-      // 재시도 가능 → 다음 시도(a++)
+      if(a<2){                                             // 마지막 시도 뒤에는 대기 없이 다음 모델
+        const ra=(lastErr&&lastErr.retryAfter)||0;
+        let waitMs = ra>0 ? ra*1000+1200 : ((lastErr&&lastErr.status===429) ? (12000+a*13000) : (2500+a*3500));
+        waitMs=Math.min(waitMs,45000);
+        if(Date.now()-startT+waitMs>DEADLINE){ next=true; break; }
+        await countdown(model,waitMs);
+      }
     }
-    // 4번 소진(또는 404) → 다음(아래) 모델로 내려감
+    if(Date.now()-startT>DEADLINE) break;
   }
   throw lastErr||{code:"error"};
 }
