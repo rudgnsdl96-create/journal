@@ -408,11 +408,16 @@ Diary:
 async function callProvider(provider,key,prompt){
   const instr=prompt+"\n\nReturn ONLY the JSON object. No markdown fences, no extra text.";
   const retryable=(status,m)=>status===429||status===503||status===500||/high demand|overload|unavailable|try again|rate|quota/i.test(m||"");
+  function retryAfterFrom(res,body){
+    let sec=parseFloat(res.headers&&res.headers.get&&res.headers.get("retry-after"))||0;
+    try{ const dets=body&&body.error&&body.error.details; if(dets&&dets.length){ for(const d of dets){ if(d.retryDelay){ const s=parseFloat(String(d.retryDelay)); if(s>sec)sec=s; } } } }catch(_){}
+    return sec;
+  }
   async function once(){
     let txt="";
     if(provider==="openai"){
       const res=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+key},body:JSON.stringify({model:"gpt-4o-mini",messages:[{role:"user",content:instr}],response_format:{type:"json_object"},max_tokens:1800})});
-      if(!res.ok){let m="";try{const eb=await res.json();m=(eb.error&&eb.error.message)||"";}catch(_){}throw {provider,code:"http_"+res.status,message:m,retryable:retryable(res.status,m)};}
+      if(!res.ok){let b=null;try{b=await res.json();}catch(_){}const m=(b&&b.error&&b.error.message)||"";throw {provider,code:"http_"+res.status,message:m,retryable:retryable(res.status,m),retryAfter:retryAfterFrom(res,b)};}
       const d=await res.json(); txt=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||"";
     }else{
       const cands=["gemini-2.0-flash","gemini-1.5-flash","gemini-flash-latest"];
@@ -420,8 +425,8 @@ async function callProvider(provider,key,prompt){
       for(const mdl of cands){
         const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+mdl+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:instr}]}]})});
         if(res.ok){ok=res;break;}
-        let m="";try{const eb=await res.json();m=(eb.error&&eb.error.message)||"";}catch(_){}
-        le={provider,code:"http_"+res.status,message:m,retryable:retryable(res.status,m)};
+        let b=null;try{b=await res.json();}catch(_){}const m=(b&&b.error&&b.error.message)||"";
+        le={provider,code:"http_"+res.status,message:m,retryable:retryable(res.status,m),retryAfter:retryAfterFrom(res,b)};
         if(res.status!==404) break;
       }
       if(!ok) throw (le||{provider,code:"error"});
@@ -432,8 +437,18 @@ async function callProvider(provider,key,prompt){
     if(!txt) throw {provider,code:"empty",message:"빈 응답",retryable:true};
     return JSON.parse(txt);
   }
+  const loaderShown=()=>{try{return $("#loader").classList.contains("show");}catch(_){return false;}};
   let le=null;
-  for(let a=0;a<3;a++){ if(a>0) await sleep(900*a+400); try{ return await once(); } catch(err){ le=err; if(!err||!err.retryable) throw err; } }
+  for(let a=0;a<5;a++){
+    if(a>0){
+      const waitMs=Math.min(Math.max(1200*a+400,(le&&le.retryAfter||0)*1000,1500),22000);
+      if(loaderShown()){try{$("#loaderMsg").textContent=`혼잡해요 · ${Math.ceil(waitMs/1000)}초 뒤 자동 재시도… (${provider})`;}catch(_){}}
+      await sleep(waitMs);
+      if(loaderShown()){try{$("#loaderMsg").textContent="다시 검사하는 중…";}catch(_){}}
+    }
+    try{ return await once(); }
+    catch(err){ le=err; if(!err||!err.retryable) throw err; }
+  }
   throw le;
 }
 /* score: more detailed & longer = higher; speed is the tiebreak */
@@ -540,13 +555,14 @@ async function doCheck(){
   }catch(err){
     hideLoader();
     let m="검사에 실패했어요.";
+    const rate = err && (err.code==="rate_limited" || err.code==="http_429" || err.code==="http_503" || /rate|quota|high demand|overload/i.test(err.message||""));
     if(err){
       if(err.code==="no_ai")m="AI 설정에서 키를 먼저 입력하세요 (수집 → 데이터 → AI 설정).";
-      else if(err.code==="rate_limited")m="요청이 많습니다. 잠시 후 다시 시도해 주세요.";
+      else if(rate)m=getKey("openai")&&getKey("gemini")?"두 AI 모두 혼잡합니다. 30~60초 뒤 다시 시도해 주세요.":"요청이 많아요. 30~60초 뒤 재시도하거나, AI 설정에 다른 키(OpenAI)를 추가하면 자동 대체됩니다.";
       else if(err.message)m="검사 실패: "+String(err.message).slice(0,140);
       else if(err.code)m="검사 실패 ("+err.code+")";
     }
-    toast(m,5000);
+    toast(m,6000);
   }
 }
 
