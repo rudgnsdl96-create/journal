@@ -151,7 +151,7 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 .grid7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
 .dowh{text-align:center;font-size:11px;color:var(--muted);font-weight:600;padding:6px 0 2px;min-width:0}
 .dowh.sun{color:var(--del)}
-.cell{aspect-ratio:1;min-width:0;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:15px;position:relative;background:transparent;color:var(--ink)}
+.cell{height:54px;min-width:0;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:15px;position:relative;background:transparent;color:var(--ink)}
 .cell.empty{visibility:hidden}
 .cell.has{background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
 .cell.today{outline:2px solid var(--brand);outline-offset:-2px}
@@ -358,7 +358,7 @@ const view=$("#view"), titleEl=$("#title"), backBtn=$("#backBtn");
 /* ---------------- utils ---------------- */
 function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function toast(msg,ms){const t=$("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),ms||1700);}
-function showLoader(m){$("#loaderMsg").textContent=m||"불러오는 중…";$("#loader").classList.add("show");}
+function showLoader(m){$("#loaderMsg").textContent=m\vert{}\vert{}"불러오는 중…";$("#loader").classList.add("show");}
 function hideLoader(){$("#loader").classList.remove("show");}
 function cleanWord(w){return (w||"").replace(/^[^A-Za-z'’-]+|[^A-Za-z'’-]+$/g,"");}
 function wrapWords(text){
@@ -424,26 +424,37 @@ Diary:
 /* Gemini call: start at selected model, 4 tries each, then drop to next model */
 async function callProvider(provider,key,prompt){
   const instr=prompt+"\n\nReturn ONLY the JSON object. No markdown fences, no extra text.";
-  const retryable=(status,m)=>status===429||status===503||status===500||/high demand|overload|unavailable|try again|rate|quota/i.test(m||"");
+  const retryable=(status,m)=>status===429||status===503||status===500||status===502||status===504||/high demand|overload|unavailable|try again|rate|quota|timeout/i.test(m||"");
+  
   function retryAfterFrom(res,body){
     let sec=parseFloat(res.headers&&res.headers.get&&res.headers.get("retry-after"))||0;
     try{ const dets=body&&body.error&&body.error.details; if(dets&&dets.length){ for(const d of dets){ if(d.retryDelay){ const s=parseFloat(String(d.retryDelay)); if(s>sec)sec=s; } } } }catch(_){}
     return sec;
   }
+  
   const loaderShown=()=>{try{return $("#loader").classList.contains("show");}catch(_){return false;}};
   const setStatus=(t)=>{ if(loaderShown()){try{$("#loaderMsg").textContent=t;}catch(_){}} };
   function shortName(m){ return (m||"").replace("gemini-","").replace("-"," "); }
+  
   function parse(txt){
     txt=(txt||"").trim().replace(/^```json/i,"").replace(/^```/,"").replace(/```$/,"").trim();
     const s=txt.indexOf("{"),e=txt.lastIndexOf("}"); if(s>=0&&e>=0)txt=txt.slice(s,e+1);
     if(!txt) throw {code:"empty",message:"빈 응답",retryable:true};
     return JSON.parse(txt);
   }
+  
   const ladder=geminiLadder();
   let lastErr=null;
+  
   for(let mi=0; mi<ladder.length; mi++){
     const model=ladder[mi];
-    if(mi>0) setStatus(`${shortName(model)} 모델로 전환…`);
+    
+    if(mi>0){
+      setStatus(`${shortName(model)} 대기 중…`);
+      await sleep(1500); // 하위 모델로 전환하기 전에 순식간에 넘어가지 않도록 대기
+      setStatus(`${shortName(model)} 모델로 전환…`);
+    }
+    
     for(let a=0;a<4;a++){
       if(a>0){
         const waitMs=Math.min(Math.max(1200*a+400,(lastErr&&lastErr.retryAfter||0)*1000,1500),20000);
@@ -451,26 +462,44 @@ async function callProvider(provider,key,prompt){
         await sleep(waitMs);
         setStatus("검사하는 중…");
       }
+      
       let res=null;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20000); // 20초 이상 무응답 시 강제 타임아웃
+      
       try{
-        res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:instr}]}]})});
-      }catch(netErr){ lastErr={code:"network",message:"네트워크 오류",retryable:true}; continue; }
+        res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent?key="+encodeURIComponent(key),{
+          method:"POST",
+          headers:{"content-type":"application/json"},
+          body:JSON.stringify({contents:[{parts:[{text:instr}]}]}),
+          signal: ctrl.signal
+        });
+        clearTimeout(timer);
+      }catch(netErr){
+        clearTimeout(timer);
+        lastErr={code:"network",message:"네트워크 오류 또는 시간 초과",retryable:true};
+        continue; // 에러 발생 시 반복문의 a++ 지점으로 넘어가 대기 후 재시도
+      }
+      
       if(res.ok){
         const d=await res.json();
         const txt=(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]&&d.candidates[0].content.parts[0].text)||"";
         try{ return parse(txt); }catch(pe){ lastErr={code:"parse",message:"응답 파싱 실패",retryable:true}; continue; }
       }
+      
       let b=null; try{ b=await res.json(); }catch(_){}
       const m=(b&&b.error&&b.error.message)||"";
       lastErr={code:"http_"+res.status,message:m,retryable:retryable(res.status,m),retryAfter:retryAfterFrom(res,b),status:res.status};
-      if(res.status===404) break;         // 이 모델 없음 → 다음 모델로
-      if(!lastErr.retryable) throw lastErr; // 키 오류 등 → 중단
-      // 재시도 가능 → 다음 시도(a++)
+      
+      if(res.status===404) break;           // 이 모델 없음 → 다음 모델로 강등
+      if(!lastErr.retryable) throw lastErr; // 키 오류, 권한 오류 등 → 즉시 중단
+      // 재시도 가능 에러(503, 429 등) → 다음 시도(a++)
     }
-    // 4번 소진(또는 404) → 다음(아래) 모델로 내려감
+    // 4번 모두 소진 시 → 다음(아래) 모델로 내려감
   }
   throw lastErr||{code:"error"};
 }
+
 /* score: more detailed & longer = higher */
 function scoreOf(r){
   if(!r||typeof r.corrected!=="string") return -1;
