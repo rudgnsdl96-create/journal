@@ -219,6 +219,7 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 .setup .lbl{font-size:12px;color:var(--muted);font-weight:700;margin:8px 2px 0}
 .setup .lbl:first-child{margin-top:0}
 .dsec h5{margin:16px 2px 6px;font-size:13px;color:var(--muted);font-weight:700}
+.lbl2{font-size:12px;color:var(--muted);font-weight:700}
 .drow{display:flex;gap:8px;flex-wrap:wrap}
 .dbtn{flex:1;min-width:92px;border:1px solid var(--line);background:var(--surface-2);border-radius:11px;padding:13px 10px;font-size:13.5px;font-weight:600;text-align:center;color:var(--ink)}
 .dbtn:active{transform:scale(.98)}
@@ -266,15 +267,13 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 let SAMPLE=null;
 (async()=>{ try{ if(window.claude&&claude.use){ SAMPLE=await claude.use("sample"); } }catch(e){} if(curTab==="today")renderToday(); })();
 function getApiKey(){try{return (localStorage.getItem("endiary.apikey")||"").trim();}catch(e){return"";}}
+function getKey(p){try{return (localStorage.getItem("endiary.key."+p)||"").trim();}catch(e){return "";}}
+function setKey(p,v){try{localStorage.setItem("endiary.key."+p,(v||"").trim());}catch(e){}}
+(function migrateKey(){try{const ok=(localStorage.getItem("endiary.apikey")||"").trim();const pv=localStorage.getItem("endiary.provider");if(ok&&(pv==="gemini"||pv==="openai")&&!getKey(pv)){setKey(pv,ok);}}catch(e){}})();
 function getProvider(){try{return localStorage.getItem("endiary.provider")||"gemini";}catch(e){return "gemini";}}
 function defModel(p){return p==="openai"?"gpt-4o-mini":p==="gemini"?"gemini-2.0-flash":"claude-3-5-sonnet-20241022";}
-function keyHelp(p){
-  if(p==="openai")return '키 발급: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" style="color:var(--brand)">platform.openai.com</a> ·';
-  if(p==="gemini")return '키 발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--brand)">aistudio.google.com</a> ·';
-  return '키 발급: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style="color:var(--brand)">console.anthropic.com</a> ·';
-}
 function getModel(){try{const m=(localStorage.getItem("endiary.model")||"").trim();return m||defModel(getProvider());}catch(e){return defModel(getProvider());}}
-function aiOn(){return !!SAMPLE || !!getApiKey();}
+function aiOn(){return !!SAMPLE || !!getKey("gemini") || !!getKey("openai") || !!getApiKey();}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function _remoteJSON(prompt,key,tier){
   const provider=getProvider(), model=getModel();
@@ -387,25 +386,77 @@ function renderDiffCol(diff,side){ // side: 'left'|'right'
 }
 
 /* ---------------- AI calls ---------------- */
-async function aiCheck(text){
-  const prompt=
-`You are an English writing tutor for a Korean learner keeping an English diary.
+function checkPrompt(text){
+  return `You are an English writing tutor for a Korean learner keeping an English diary.
 Correct the diary below for grammar, spelling, word choice, punctuation, and naturalness.
 Preserve the writer's meaning and voice. Do NOT add new facts or ideas.
 Return ONLY a JSON object with this exact shape:
 {
  "corrected": "the full corrected diary text",
  "corrections": [
-   {"original":"the exact wrong phrase from the diary","corrected":"the fixed phrase","type":"문법|철자|어휘|구두점|표현","explanation":"한국어로 한 문장 설명"}
+   {"original":"the exact wrong phrase from the diary","corrected":"the fixed phrase","type":"문법|어휘|어순|시제|전치사|표현","explanation":"한국어로 자세한 설명 (왜 틀렸는지 + 규칙)"}
  ],
  "quiz": [
-   {"question":"한국어 지시문 또는 빈칸(___) 포함 영어 문장","options":["보기1","보기2","보기3","보기4"],"answer":0,"explain":"한국어 해설 한 문장"}
+   {"question":"한국어 지시문 또는 빈칸(___) 포함 영어 문장","options":["보기1","보기2","보기3","보기4"],"answer":0,"explain":"한국어 해설"}
  ]
 }
-Rules: 'answer' is the 0-based index of the correct option. Apply ALL fixes (including capitalization, punctuation, spacing, apostrophes) silently in "corrected". But in "corrections" and "quiz", include ONLY meaningful errors: grammar, verb tense/form, articles, prepositions, word choice, word order, singular/plural, and missing or extra words. Do NOT list capitalization / punctuation / spacing / apostrophe-only changes. Make 3 to 6 quiz items based ONLY on those meaningful errors (test the correct form vs the learner's wrong form). If there are no meaningful errors, use "corrections":[] and "quiz":[]. Keep explanations in Korean, concise.
+Rules: 'answer' is the 0-based index of the correct option. Apply ALL fixes (including capitalization, punctuation, spacing, apostrophes) silently in "corrected". But in "corrections" and "quiz", include ONLY meaningful errors: grammar, verb tense/form, articles, prepositions, word choice, word order, singular/plural, and missing or extra words. Do NOT list capitalization / punctuation / spacing / apostrophe-only changes. Give thorough, helpful Korean explanations. Make 3 to 6 quiz items based ONLY on those meaningful errors. If there are no meaningful errors, use "corrections":[] and "quiz":[].
 Diary:
 """${text}"""`;
-  return await askJSON(prompt,"default");
+}
+/* call a specific provider with its own key, model fallback + retry */
+async function callProvider(provider,key,prompt){
+  const instr=prompt+"\n\nReturn ONLY the JSON object. No markdown fences, no extra text.";
+  const retryable=(status,m)=>status===429||status===503||status===500||/high demand|overload|unavailable|try again|rate|quota/i.test(m||"");
+  async function once(){
+    let txt="";
+    if(provider==="openai"){
+      const res=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+key},body:JSON.stringify({model:"gpt-4o-mini",messages:[{role:"user",content:instr}],response_format:{type:"json_object"},max_tokens:1800})});
+      if(!res.ok){let m="";try{const eb=await res.json();m=(eb.error&&eb.error.message)||"";}catch(_){}throw {provider,code:"http_"+res.status,message:m,retryable:retryable(res.status,m)};}
+      const d=await res.json(); txt=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||"";
+    }else{
+      const cands=["gemini-2.0-flash","gemini-1.5-flash","gemini-flash-latest"];
+      let ok=null,le=null;
+      for(const mdl of cands){
+        const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+mdl+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:instr}]}]})});
+        if(res.ok){ok=res;break;}
+        let m="";try{const eb=await res.json();m=(eb.error&&eb.error.message)||"";}catch(_){}
+        le={provider,code:"http_"+res.status,message:m,retryable:retryable(res.status,m)};
+        if(res.status!==404) break;
+      }
+      if(!ok) throw (le||{provider,code:"error"});
+      const d=await ok.json(); txt=(d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts&&d.candidates[0].content.parts[0]&&d.candidates[0].content.parts[0].text)||"";
+    }
+    txt=(txt||"").trim().replace(/^```json/i,"").replace(/^```/,"").replace(/```$/,"").trim();
+    const s=txt.indexOf("{"),e=txt.lastIndexOf("}"); if(s>=0&&e>=0)txt=txt.slice(s,e+1);
+    if(!txt) throw {provider,code:"empty",message:"빈 응답",retryable:true};
+    return JSON.parse(txt);
+  }
+  let le=null;
+  for(let a=0;a<3;a++){ if(a>0) await sleep(900*a+400); try{ return await once(); } catch(err){ le=err; if(!err||!err.retryable) throw err; } }
+  throw le;
+}
+/* score: more detailed & longer = higher; speed is the tiebreak */
+function scoreOf(r){
+  if(!r||typeof r.corrected!=="string") return -1;
+  const corr=Array.isArray(r.corrections)?r.corrections:[];
+  const quiz=Array.isArray(r.quiz)?r.quiz:[];
+  let expl=0; corr.forEach(c=>expl+=((c&&c.explanation)||"").length); quiz.forEach(q=>expl+=((q&&q.explain)||"").length);
+  return corr.length*3 + quiz.length*2 + Math.min(expl,800)/50 + Math.min((r.corrected||"").length,900)/200;
+}
+/* send to BOTH providers in parallel, pick the best (detail > length > speed) */
+async function aiCheckBest(text){
+  const prompt=checkPrompt(text);
+  const gkey=getKey("gemini"), okey=getKey("openai");
+  const tasks=[];
+  if(gkey) tasks.push((async()=>{const t=(performance.now?performance.now():Date.now());const r=await callProvider("gemini",gkey,prompt);return {name:"Gemini",r,ms:(performance.now?performance.now():Date.now())-t};})());
+  if(okey) tasks.push((async()=>{const t=(performance.now?performance.now():Date.now());const r=await callProvider("openai",okey,prompt);return {name:"GPT",r,ms:(performance.now?performance.now():Date.now())-t};})());
+  if(!tasks.length){ if(SAMPLE) return {name:"Claude",r:await askJSON(prompt,"default"),ms:0}; throw {code:"no_ai"}; }
+  const settled=await Promise.allSettled(tasks);
+  const oks=settled.filter(s=>s.status==="fulfilled").map(s=>s.value).filter(v=>v&&v.r&&typeof v.r.corrected==="string");
+  if(!oks.length){ const rej=settled.find(s=>s.status==="rejected"); throw (rej&&rej.reason)||{code:"error"}; }
+  oks.sort((a,b)=> scoreOf(b.r)-scoreOf(a.r) || a.ms-b.ms );
+  return oks[0];
 }
 async function aiDefine(word,ctx){
   const prompt=
@@ -413,7 +464,12 @@ async function aiDefine(word,ctx){
 {"word":"headword","pos":"품사(한국어: 명사/동사/형용사/부사/구 등)","ipa":"IPA or empty string","meaning":"한국어 뜻 (간결)","example":"a simple natural English example sentence","exampleKo":"예문의 한국어 번역"}
 Word: "${word}"
 Context: "${(ctx||"").slice(0,200)}"`;
-  return await askJSON(prompt,"quick");
+  if(SAMPLE) return await askJSON(prompt,"quick");
+  const gkey=getKey("gemini"), okey=getKey("openai");
+  if(gkey) return await callProvider("gemini",gkey,prompt);
+  if(okey) return await callProvider("openai",okey,prompt);
+  if(getApiKey()) return await askJSON(prompt,"quick");
+  throw {code:"no_ai"};
 }
 
 /* ---------------- TODAY ---------------- */
@@ -470,11 +526,12 @@ async function doCheck(){
   const text=ta.value.trim();
   if(text.length<3){toast("조금 더 써 주세요.");return;}
   if(!aiOn()){toast("AI 교정을 사용할 수 없어요.");return;}
-  showLoader("문법을 검사하고 있어요…");
+  showLoader("두 AI로 검사하는 중…");
   try{
-    const r=await aiCheck(text);
+    const best=await aiCheckBest(text);
+    const r=best.r;
     const e=getEntry(TODAY_KEY)||{};
-    e.text=text; e.corrected=r.corrected||text;
+    e.text=text; e.corrected=r.corrected||text; e.source=best.name||"";
     e.corrections=(Array.isArray(r.corrections)?r.corrections:[]).filter(c=>c&&c.original&&c.corrected&&!isMinorFix(c.original,c.corrected));
     e.quiz=Array.isArray(r.quiz)?r.quiz:[];
     e.quizState={}; e.checkedAt=Date.now();
@@ -511,6 +568,7 @@ function renderResult(){
       <button data-rt="compare" class="${resultTab==="compare"?"on":""}">비교 · 교정</button>
       <button data-rt="quiz" class="${resultTab==="quiz"?"on":""}">퀴즈 ${quiz.length?`(${quiz.length})`:""}</button>
     </div>
+    ${e.source?`<div style="text-align:right;font-size:11px;color:var(--muted);margin:5px 2px 0">${esc(e.source)} 응답 선택</div>`:""}
     <div id="resultBody"></div>`;
   view.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{resultTab=b.dataset.rt;renderResult();});
   const body=$("#resultBody");
@@ -1256,19 +1314,19 @@ function openDataSheet(){
     <div class="dsec"><h5>CSV 불러오기</h5><div class="drow">
       <button class="dbtn" id="impFile">파일 선택</button>
       <button class="dbtn" id="impPaste">붙여넣기</button></div>
-    <div class="dsec"><h5>AI 설정 (claude.ai 밖에서 사용 시)</h5>
-      <div class="chips">${["openai","gemini"].map(p=>`<button class="chip ${getProvider()===p?"on":""}" data-prov="${p}">${p==="openai"?"OpenAI":"Gemini"}</button>`).join("")}</div>
-      <input id="akey" type="password" placeholder="API 키 붙여넣기" value="${esc(getApiKey())}" style="width:100%;margin-top:6px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
-      <input id="amodel" type="text" placeholder="모델 (비우면 기본값: ${esc(defModel(getProvider()))})" value="${esc(localStorage.getItem("endiary.model")||"")}" style="width:100%;margin-top:8px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
-      <button class="btn primary" id="saveKey" style="margin-top:10px">AI 설정 저장</button>
-      <div style="color:var(--muted);font-size:11.5px;margin-top:8px">${keyHelp(getProvider())} 키는 이 브라우저에만 저장돼요. claude.ai에서 열면 키 없이 자동 동작합니다.</div></div>
+    <div class="dsec"><h5>AI 설정 (claude.ai 밖에서 · 키를 넣으면 자동)</h5>
+      <div class="lbl2">Gemini API 키</div>
+      <input id="kgem" type="password" placeholder="Gemini 키 (AIza…)" value="${esc(getKey("gemini"))}" style="width:100%;margin-top:4px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
+      <div class="lbl2" style="margin-top:10px">OpenAI API 키</div>
+      <input id="koai" type="password" placeholder="OpenAI 키 (sk-…)" value="${esc(getKey("openai"))}" style="width:100%;margin-top:4px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
+      <button class="btn primary" id="saveKeys" style="margin-top:12px">키 저장</button>
+      <div style="color:var(--muted);font-size:11.5px;margin-top:8px;line-height:1.6">둘 다 넣으면 검사 시 <b>두 곳에 동시에 요청</b>해 더 자세하고 좋은 답을 자동 선택합니다(한쪽이 안 돼도 다른 쪽 사용).<br>키 발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--brand)">Gemini</a> · <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" style="color:var(--brand)">OpenAI</a>. 키는 이 브라우저에만 저장돼요.</div></div>
     <div style="height:8px"></div>`;
   sheet.classList.add("show");scrim.classList.add("show");
   sheet.querySelectorAll("[data-exp]").forEach(b=>b.onclick=()=>exportCSV(b.dataset.exp));
   $("#impFile").onclick=()=>$("#csvFile").click();
   $("#impPaste").onclick=openPasteImport;
-  sheet.querySelectorAll("[data-prov]").forEach(b=>b.onclick=()=>{try{const kv=$("#akey"),mv=$("#amodel");localStorage.setItem("endiary.apikey",(kv&&kv.value||"").trim());localStorage.setItem("endiary.model",(mv&&mv.value||"").trim());localStorage.setItem("endiary.provider",b.dataset.prov);}catch(e){}openDataSheet();});
-  $("#saveKey").onclick=()=>{try{localStorage.setItem("endiary.apikey",$("#akey").value.trim());localStorage.setItem("endiary.model",$("#amodel").value.trim());}catch(e){}closeSheet();toast("AI 설정을 저장했어요");if(curTab==="today")renderToday();};
+  $("#saveKeys").onclick=()=>{setKey("gemini",$("#kgem").value);setKey("openai",$("#koai").value);closeSheet();toast("AI 키를 저장했어요");if(curTab==="today")renderToday();};
 }
 function openPasteImport(){
   sheet.innerHTML=`<div class="grab"></div><div class="word serif" style="font-size:20px">CSV 붙여넣기</div>
