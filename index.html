@@ -264,7 +264,7 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 <script>
 "use strict";
 /* ---------------- capability: sample (AI) ---------------- */
-const APP_VERSION="2026-09-10-groq3";
+const APP_VERSION="2026-09-10-groq4";
 let SAMPLE=null;
 (async()=>{ try{ if(window.claude&&claude.use){ SAMPLE=await claude.use("sample"); } }catch(e){} if(curTab==="today")renderToday(); })();
 function getApiKey(){try{return (localStorage.getItem("endiary.apikey")||"").trim();}catch(e){return"";}}
@@ -1247,11 +1247,27 @@ function parseCSV(text){
   return rows.filter(r=>!(r.length===1&&r[0]===""));
 }
 function rowsToObjects(rows){if(!rows.length)return[];const h=rows[0].map(x=>x.trim());return rows.slice(1).map(r=>{const o={};h.forEach((k,i)=>o[k]=r[i]!=null?r[i]:"");return o;});}
+async function saveFile(name,text,mime){
+  try{
+    const blob=new Blob([text],{type:mime||"application/octet-stream"});
+    if(navigator.share && navigator.canShare){          // iOS: 공유 시트 → '파일에 저장'
+      try{
+        const file=new File([blob],name,{type:blob.type});
+        if(navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:name}); return true; }
+      }catch(err){ if(err && err.name==="AbortError") return true; }
+    }
+    const url=URL.createObjectURL(blob);               // 데스크톱/안드로이드: 다운로드
+    const a=document.createElement("a"); a.href=url; a.download=name; a.rel="noopener"; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ try{URL.revokeObjectURL(url); a.remove();}catch(_){} },2000);
+    return true;
+  }catch(e){ return false; }
+}
 async function exportAll(){
   const data={app:"endiary",version:APP_VERSION,exportedAt:new Date().toISOString(),vocab:DB.vocab,sentences:DB.sentences,entries:DB.entries};
   if(!DB.vocab.length && !DB.sentences.length && !Object.keys(DB.entries).length){toast("내보낼 데이터가 없어요");return;}
   const json=JSON.stringify(data,null,2);
   const name="endiary-backup-"+keyOf(new Date())+".json";
+  if(await saveFile(name,json,"application/json")){ toast("전체 백업을 저장했어요"); return; }
   let dl=null;try{dl=await claude.use("downloads");}catch(e){}
   if(dl){try{await dl.save({filename:name,data:json});toast("전체 백업을 저장했어요");return;}catch(e){if(e&&e.code==="cancelled")return;}}
   showCSVFallback(name,json);
@@ -1281,6 +1297,7 @@ async function exportCSV(kind){
   else{headers=["date","text","corrected"];rows=Object.keys(DB.entries).sort().map(k=>({date:k,text:DB.entries[k].text||"",corrected:DB.entries[k].corrected||""}));name="diary.csv";}
   if(!rows.length){toast("내보낼 데이터가 없어요");return;}
   const csv="\uFEFF"+toCSV(headers,rows);
+  if(await saveFile(name,csv,"text/csv;charset=utf-8")){ toast("CSV를 저장했어요"); return; }
   let dl=null;try{dl=await claude.use("downloads");}catch(e){}
   if(dl){try{await dl.save({filename:name,data:csv});toast("CSV를 저장했어요");return;}catch(e){if(e&&e.code==="cancelled")return;}}
   showCSVFallback(name,csv);
