@@ -259,12 +259,12 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 <div class="sheet" id="sheet"></div>
 <div class="loader" id="loader"><div class="spin"></div><div class="msg" id="loaderMsg">검사하고 있어요…</div></div>
 <div class="toast" id="toast"></div>
-<input type="file" id="csvFile" accept=".csv,text/csv" style="display:none">
+<input type="file" id="csvFile" accept=".json,.csv,application/json,text/csv" style="display:none">
 
 <script>
 "use strict";
 /* ---------------- capability: sample (AI) ---------------- */
-const APP_VERSION="2026-09-10-groq2";
+const APP_VERSION="2026-09-10-groq3";
 let SAMPLE=null;
 (async()=>{ try{ if(window.claude&&claude.use){ SAMPLE=await claude.use("sample"); } }catch(e){} if(curTab==="today")renderToday(); })();
 function getApiKey(){try{return (localStorage.getItem("endiary.apikey")||"").trim();}catch(e){return"";}}
@@ -1247,6 +1247,33 @@ function parseCSV(text){
   return rows.filter(r=>!(r.length===1&&r[0]===""));
 }
 function rowsToObjects(rows){if(!rows.length)return[];const h=rows[0].map(x=>x.trim());return rows.slice(1).map(r=>{const o={};h.forEach((k,i)=>o[k]=r[i]!=null?r[i]:"");return o;});}
+async function exportAll(){
+  const data={app:"endiary",version:APP_VERSION,exportedAt:new Date().toISOString(),vocab:DB.vocab,sentences:DB.sentences,entries:DB.entries};
+  if(!DB.vocab.length && !DB.sentences.length && !Object.keys(DB.entries).length){toast("내보낼 데이터가 없어요");return;}
+  const json=JSON.stringify(data,null,2);
+  const name="endiary-backup-"+keyOf(new Date())+".json";
+  let dl=null;try{dl=await claude.use("downloads");}catch(e){}
+  if(dl){try{await dl.save({filename:name,data:json});toast("전체 백업을 저장했어요");return;}catch(e){if(e&&e.code==="cancelled")return;}}
+  showCSVFallback(name,json);
+}
+function importData(text){
+  const t=(text||"").trim();
+  if(t.charAt(0)==="{"){
+    let d=null; try{ d=JSON.parse(t); }catch(_){}
+    if(d && (Array.isArray(d.vocab)||Array.isArray(d.sentences)||(d.entries&&typeof d.entries==="object"))){
+      let nv=0,ns=0,ne=0;
+      if(Array.isArray(d.vocab)) d.vocab.forEach(x=>{ if(x&&x.word&&!DB.vocab.some(v=>(v.word||"").toLowerCase()===String(x.word).toLowerCase())){ DB.vocab.unshift(x); nv++; } });
+      if(Array.isArray(d.sentences)) d.sentences.forEach(x=>{ if(x&&x.text&&!DB.sentences.some(s=>s.text===x.text)){ DB.sentences.unshift(x); ns++; } });
+      if(d.entries&&typeof d.entries==="object") Object.keys(d.entries).forEach(k=>{ if(d.entries[k]){ DB.entries[k]={...(DB.entries[k]||{}),...d.entries[k]}; ne++; } });
+      saveDB(); closeSheet();
+      if(curTab==="collection")renderCollection(); else if(curTab==="calendar")renderCalendar();
+      toast(`복원 완료 · 단어 ${nv} · 문장 ${ns} · 일기 ${ne}`,5000);
+      return;
+    }
+    toast("백업 파일 형식을 확인해 주세요"); return;
+  }
+  importCSVText(t);   // CSV(개별) 형식
+}
 async function exportCSV(kind){
   let headers,rows,name;
   if(kind==="vocab"){headers=["word","pos","meaning","example","exampleKo","date"];rows=DB.vocab;name="wordbook.csv";}
@@ -1274,17 +1301,19 @@ function importCSVText(text){
   }else{toast("알 수 없는 CSV 형식이에요");return;}
   closeSheet();if(curTab==="collection")renderCollection();else if(curTab==="calendar")renderCalendar();
 }
-$("#csvFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>importCSVText(String(rd.result));rd.onerror=()=>toast("파일을 읽지 못했어요");rd.readAsText(f);e.target.value="";});
+$("#csvFile").addEventListener("change",e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>importData(String(rd.result));rd.onerror=()=>toast("파일을 읽지 못했어요");rd.readAsText(f);e.target.value="";});
 function openDataSheet(){
   sheet.innerHTML=`<div class="grab"></div>
     <div class="word serif" style="font-size:22px">데이터 관리</div>
-    <div class="dsec"><h5>CSV 내보내기</h5><div class="drow">
+    <div class="dsec"><h5>전체 백업 / 복원</h5><div class="drow">
+      <button class="dbtn" id="expAll">전체 내보내기(.json)</button>
+      <button class="dbtn" id="impFile">전체 불러오기</button></div>
+      <div style="color:var(--muted);font-size:11.5px;margin-top:8px">단어장·문장수집·일기 기록을 파일 하나로 저장/복원합니다(.json). 같은 항목은 건너뜁니다.</div></div>
+    <div class="dsec"><h5>개별 내보내기 (CSV · 엑셀용)</h5><div class="drow">
       <button class="dbtn" data-exp="vocab">단어장</button>
       <button class="dbtn" data-exp="sent">문장수집</button>
-      <button class="dbtn" data-exp="diary">일기 기록</button></div></div>
-    <div class="dsec"><h5>CSV 불러오기</h5><div class="drow">
-      <button class="dbtn" id="impFile">파일 선택</button>
-      <button class="dbtn" id="impPaste">붙여넣기</button></div>
+      <button class="dbtn" data-exp="diary">일기 기록</button>
+      <button class="dbtn" id="impPaste">붙여넣기</button></div></div>
     <div class="dsec"><h5>AI 설정 (Groq · 무료)</h5>
       <div class="lbl2">Groq API 키</div>
       <input id="kgroq" type="password" placeholder="Groq 키 (gsk_…)" value="${esc(getKey("groq"))}" style="width:100%;margin-top:4px;border:1px solid var(--line);border-radius:11px;padding:11px;background:var(--surface);color:var(--ink);font-size:13px">
@@ -1297,6 +1326,7 @@ function openDataSheet(){
     <div style="height:8px"></div>`;
   sheet.classList.add("show");scrim.classList.add("show");
   sheet.querySelectorAll("[data-exp]").forEach(b=>b.onclick=()=>exportCSV(b.dataset.exp));
+  $("#expAll").onclick=exportAll;
   $("#impFile").onclick=()=>$("#csvFile").click();
   $("#impPaste").onclick=openPasteImport;
   $("#saveKeys").onclick=()=>{setKey("groq",$("#kgroq").value);try{localStorage.setItem("endiary.model.groq",$("#mgroq").value);}catch(e){}closeSheet();toast("AI 설정을 저장했어요");if(curTab==="today")renderToday();};
@@ -1321,7 +1351,7 @@ function openPasteImport(){
   sheet.innerHTML=`<div class="grab"></div><div class="word serif" style="font-size:20px">CSV 붙여넣기</div>
     <textarea id="pasteArea" style="width:100%;height:190px;margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px;font-family:var(--font-ui);font-size:13px;background:var(--surface);color:var(--ink)" placeholder="CSV 내용을 붙여넣으세요. 첫 줄은 헤더 (예: word,pos,meaning,example,exampleKo,date)"></textarea>
     <div class="sactions"><button class="btn primary" id="doImport">불러오기</button></div>`;
-  $("#doImport").onclick=()=>{const t=$("#pasteArea").value.trim();if(t)importCSVText(t);else toast("내용을 붙여넣어 주세요");};
+  $("#doImport").onclick=()=>{const t=$("#pasteArea").value.trim();if(t)importData(t);else toast("내용을 붙여넣어 주세요");};
 }
 function showCSVFallback(name,csv){
   sheet.innerHTML=`<div class="grab"></div><div class="word serif" style="font-size:19px">${esc(name)}</div>
