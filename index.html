@@ -142,6 +142,15 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 .opt[disabled]{cursor:default}
 .qexp{font-size:13.5px;color:var(--muted);margin-top:6px;padding:0 2px}
 .qexp b{color:var(--ink)}
+.optinfo{margin:-3px 0 9px 2px;padding:9px 12px;background:var(--surface-2);border-radius:11px}
+.optinfo .oi-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.optinfo .oi-w{font-size:16px;font-weight:600}
+.optinfo .oi-p{font-size:11px;font-weight:700;color:var(--brand)}
+.optinfo .oi-m{color:var(--muted);font-size:13px}
+.optinfo .oi-ex{color:var(--muted);font-size:12.5px;margin-top:4px;font-family:var(--font-serif);font-style:italic;line-height:1.55}
+.optadd{margin-top:8px;font-size:12.5px;font-weight:700;color:var(--brand);background:var(--brand-soft);border-radius:8px;padding:6px 11px}
+.optadd:active{transform:scale(.97)}
+.optadd.added{color:var(--muted);background:transparent;border:1px solid var(--line)}
 
 /* calendar */
 .calhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 2px 8px}
@@ -269,7 +278,7 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 <script>
 "use strict";
 /* ---------------- capability: sample (AI) ---------------- */
-const APP_VERSION="2026-09-11-editpast";
+const APP_VERSION="2026-09-11-voca413";
 let SAMPLE=null;
 (async()=>{ try{ if(window.claude&&claude.use){ SAMPLE=await claude.use("sample"); } }catch(e){} if(curTab==="today")renderToday(); })();
 function getApiKey(){try{return (localStorage.getItem("endiary.apikey")||"").trim();}catch(e){return"";}}
@@ -828,6 +837,16 @@ document.addEventListener("click",e=>{
     if(testState&&testState.answers[qi]==null){ testState.answers[qi]=oi; const st=view.scrollTop; renderTest(); view.scrollTop=st; }
     return;
   }
+  const addopt=e.target.closest("[data-addopt]"); if(addopt&&!addopt.disabled){
+    const p=addopt.dataset.addopt.split(":"),qi=+p[0],oi=+p[1];
+    const it=testState&&testState.questions[qi]&&testState.questions[qi].optItems&&testState.questions[qi].optItems[oi];
+    if(it&&it.word){
+      if(DB.vocab.some(v=>(v.word||"").toLowerCase()===it.word.toLowerCase())){ toast("이미 단어장에 있어요"); }
+      else{ addVocab({word:it.word,pos:it.pos||"",meaning:it.meaning||"",example:it.example||"",exampleKo:it.exampleKo||""}); toast("단어장에 추가했어요"); }
+      addopt.textContent="✓ 단어장에 있음"; addopt.classList.add("added"); addopt.disabled=true;
+    }
+    return;
+  }
   const ao=e.target.closest("[data-applyone]"); if(ao){
     const e3=getEntry(resultKey||curEntryKey); const idx=+ao.dataset.applyone; const c=e3&&e3.corrections&&e3.corrections[idx];
     if(c){ const done=applyFix(e3,c.original,c.corrected); if(done){ e3.corrections.splice(idx,1); saveDB(); toast("적용했어요"); const st=view.scrollTop; renderResult(); view.scrollTop=st; } else { toast("이미 적용된 문장이에요"); } }
@@ -1089,6 +1108,190 @@ const _MORE=[
 ];
 TOEIC_SAMPLE.push(..._MORE.map(t=>({word:t[0],pos:t[1],meaning:t[2],example:t[3],exampleKo:t[4]})));
 
+/* ===== TOEIC 추가 배치 #1 (2026-09-11) ===== */
+const _MORE2=[
+ ["accommodate","동사","수용하다, 편의를 제공하다","The hotel can accommodate 300 guests.","그 호텔은 손님 300명을 수용할 수 있다."],
+ ["accountant","명사","회계사","The accountant reviewed the budget.","회계사가 예산을 검토했다."],
+ ["accurate","형용사","정확한","Please keep accurate records.","정확한 기록을 유지하세요."],
+ ["acknowledge","동사","인정하다, 수신을 확인하다","Please acknowledge receipt of this email.","이 이메일 수신을 확인해 주세요."],
+ ["address","동사","(문제를) 다루다, 처리하다","We need to address this issue quickly.","우리는 이 문제를 빨리 다뤄야 한다."],
+ ["administer","동사","관리하다, 운영하다","She administers the training program.","그녀는 그 교육 프로그램을 운영한다."],
+ ["advance","명사·동사","진전; 선불; 나아가다","We paid in advance.","우리는 선불로 지불했다."],
+ ["agency","명사","대행사, 대리점","an advertising agency","광고 대행사"],
+ ["alternative","명사·형용사","대안(의)","Do we have an alternative plan?","우리에게 대안이 있나요?"],
+ ["ambitious","형용사","야심 찬","an ambitious project","야심 찬 프로젝트"],
+ ["analyze","동사","분석하다","We analyzed the sales data.","우리는 판매 데이터를 분석했다."],
+ ["anticipate","동사","예상하다","We anticipate strong demand.","우리는 강한 수요를 예상한다."],
+ ["appraisal","명사","평가, 감정","an annual performance appraisal","연례 성과 평가"],
+ ["approval","명사","승인","The plan needs manager approval.","그 계획은 매니저의 승인이 필요하다."],
+ ["assess","동사","평가하다","We assess risk carefully.","우리는 위험을 신중히 평가한다."],
+ ["asset","명사","자산","The building is a valuable asset.","그 건물은 소중한 자산이다."],
+ ["assignment","명사","과제, 배정 업무","I finished my assignment.","나는 과제를 끝냈다."],
+ ["assume","동사","가정하다, 떠맡다","Do not assume anything.","아무것도 가정하지 마라."],
+ ["assurance","명사","보장, 확언","quality assurance","품질 보증"],
+ ["attempt","명사·동사","시도(하다)","We made a second attempt.","우리는 두 번째 시도를 했다."],
+ ["attendance","명사","출석, 참석","Attendance is required.","출석은 필수다."],
+ ["attentive","형용사","주의 깊은, 세심한","an attentive assistant","세심한 비서"],
+ ["attorney","명사","변호사","Consult an attorney first.","먼저 변호사와 상담하세요."],
+ ["audit","명사·동사","회계 감사(하다)","an internal audit","내부 감사"],
+ ["authority","명사","권한, 당국","the local authority","지방 당국"],
+ ["aware","형용사","알고 있는, 인식하는","Be aware of the deadline.","마감일을 유념하세요."],
+ ["beneficial","형용사","유익한","a mutually beneficial deal","서로에게 유익한 거래"],
+ ["bid","명사·동사","입찰(하다)","They placed a low bid.","그들은 낮은 입찰가를 냈다."],
+ ["boost","동사·명사","높이다; 증대","boost productivity","생산성을 높이다"],
+ ["branch","명사","지점, 지사","our Busan branch","우리 부산 지점"],
+ ["brief","형용사·동사","간단한; briefing 하다","a brief meeting","짧은 회의"],
+ ["candid","형용사","솔직한","She gave candid feedback.","그녀는 솔직한 피드백을 주었다."],
+ ["caution","명사·동사","주의; 경고하다","Use caution near the machine.","기계 근처에서는 주의하세요."],
+ ["clarify","동사","명확히 하다","Let me clarify the details.","세부 사항을 명확히 하겠습니다."],
+ ["collaborate","동사","협업하다","Teams collaborate on the design.","팀들이 디자인을 협업한다."],
+ ["comply","동사","(규정을) 따르다, 준수하다","We comply with the rules.","우리는 규정을 준수한다."],
+ ["compensate","동사","보상하다","We will compensate you for the delay.","지연에 대해 보상해 드리겠습니다."],
+ ["comprehensive","형용사","포괄적인, 종합적인","a comprehensive report","종합 보고서"],
+ ["concern","명사·동사","우려; 관련되다","address customer concerns","고객 우려를 해결하다"],
+ ["consecutive","형용사","연속적인","three consecutive years","3년 연속"],
+ ["consent","명사·동사","동의(하다)","written consent","서면 동의"],
+ ["consistent","형용사","일관된","consistent quality","일관된 품질"],
+ ["consult","동사","상담하다, 참고하다","Consult the manual first.","먼저 설명서를 참고하세요."],
+ ["coordinate","동사","조율하다, 조정하다","coordinate the schedules","일정을 조율하다"],
+ ["crucial","형용사","결정적인, 중대한","a crucial decision","중대한 결정"],
+ ["deduct","동사","공제하다, 빼다","Taxes are deducted automatically.","세금이 자동으로 공제된다."],
+ ["delegate","동사·명사","위임하다; 대표","delegate the task","업무를 위임하다"],
+ ["deposit","명사·동사","보증금; 입금하다","pay a deposit","보증금을 지불하다"],
+ ["designate","동사","지정하다","a designated area","지정된 구역"],
+ ["detailed","형용사","상세한","a detailed plan","상세한 계획"],
+ ["diverse","형용사","다양한","a diverse workforce","다양한 인력"],
+ ["dispatch","동사·명사","발송하다; 파견","dispatch the goods","상품을 발송하다"],
+ ["dispose","동사","처리하다, 버리다","dispose of the waste","폐기물을 처리하다"],
+ ["duration","명사","기간, 지속 시간","the duration of the contract","계약 기간"],
+ ["eager","형용사","열망하는, 간절한","eager to learn","배우기를 열망하는"],
+ ["earn","동사","(돈을) 벌다, 얻다","earn a bonus","보너스를 받다"],
+ ["efficiency","명사","효율(성)","improve efficiency","효율을 높이다"],
+ ["elaborate","동사·형용사","자세히 설명하다; 정교한","Please elaborate on that.","그 점을 자세히 설명해 주세요."],
+ ["emerge","동사","나타나다, 부상하다","New markets emerged.","새로운 시장이 부상했다."],
+ ["emphasis","명사","강조","put emphasis on safety","안전을 강조하다"],
+ ["enclose","동사","동봉하다","Please find the enclosed invoice.","동봉된 청구서를 확인하세요."],
+ ["endorse","동사","보증하다, 지지하다","endorse a candidate","후보를 지지하다"],
+ ["enhance","동사","향상시키다","enhance the user experience","사용자 경험을 향상시키다"],
+ ["enroll","동사","등록하다, 가입하다","enroll in a course","강좌에 등록하다"],
+ ["entitle","동사","자격을 주다","You are entitled to a refund.","당신은 환불받을 자격이 있다."],
+ ["entrepreneur","명사","기업가, 사업가","a young entrepreneur","젊은 사업가"],
+ ["exclusive","형용사","독점적인, 전용의","an exclusive offer","독점 제공"],
+ ["expertise","명사","전문 지식","technical expertise","기술 전문성"],
+ ["expiration","명사","만료","the expiration date","만료일"],
+ ["feasible","형용사","실현 가능한","a feasible plan","실현 가능한 계획"],
+ ["figure","명사","수치, 숫자","the sales figures","매출 수치"],
+ ["finalize","동사","마무리하다, 확정하다","finalize the deal","거래를 확정하다"],
+ ["flexible","형용사","유연한","flexible working hours","유연 근무 시간"],
+ ["fluctuate","동사","변동하다","Prices fluctuate daily.","가격이 매일 변동한다."],
+ ["forward","동사·부사","전달하다; 앞으로","forward the email","이메일을 전달하다"],
+ ["fragile","형용사","깨지기 쉬운","Handle fragile items carefully.","깨지기 쉬운 물품을 조심히 다루세요."],
+ ["gain","동사·명사","얻다; 이익","gain experience","경험을 쌓다"],
+ ["gather","동사","모으다, 모이다","gather feedback","의견을 모으다"],
+ ["generous","형용사","관대한, 후한","a generous discount","후한 할인"],
+ ["hesitate","동사","망설이다","Do not hesitate to ask.","주저 말고 문의하세요."],
+ ["highlight","동사·명사","강조하다; 주요 부분","highlight the key points","핵심을 강조하다"],
+ ["identify","동사","확인하다, 식별하다","identify the problem","문제를 파악하다"],
+ ["impose","동사","부과하다","impose a fine","벌금을 부과하다"],
+ ["impressive","형용사","인상적인","an impressive result","인상적인 결과"],
+ ["incentive","명사","장려책, 인센티브","a sales incentive","판매 장려금"],
+ ["initiative","명사","주도(권), 계획","take the initiative","주도적으로 나서다"],
+ ["innovative","형용사","혁신적인","an innovative product","혁신적인 제품"],
+ ["inquiry","명사","문의","a customer inquiry","고객 문의"],
+ ["intend","동사","의도하다, 작정하다","We intend to expand.","우리는 확장할 계획이다."],
+ ["interior","명사·형용사","내부(의), 실내(의)","interior design","실내 디자인"],
+ ["interrupt","동사","방해하다, 중단시키다","Sorry to interrupt you.","방해해서 죄송합니다."],
+ ["invest","동사","투자하다","invest in new equipment","새 장비에 투자하다"],
+ ["keen","형용사","열망하는, 예리한","keen on the idea","그 아이디어에 관심이 많은"],
+ ["labor","명사","노동, 노동력","labor costs","인건비"],
+ ["layout","명사","배치, 레이아웃","the office layout","사무실 배치"],
+ ["legible","형용사","읽기 쉬운, 알아보기 쉬운","legible handwriting","알아보기 쉬운 글씨"],
+ ["liable","형용사","법적 책임이 있는","liable for damages","손해에 대해 책임이 있는"],
+ ["loyal","형용사","충성스러운","loyal customers","단골 고객"],
+ ["mandatory","형용사","의무적인","mandatory training","의무 교육"],
+ ["mention","동사·명사","언급(하다)","as mentioned above","위에서 언급했듯이"],
+ ["minimize","동사","최소화하다","minimize errors","오류를 최소화하다"],
+ ["moderate","형용사","적당한, 보통의","a moderate price","적당한 가격"],
+ ["modify","동사","수정하다","modify the design","디자인을 수정하다"],
+ ["monitor","동사·명사","감시하다; 모니터","monitor progress","진행 상황을 점검하다"],
+ ["nominate","동사","지명하다, 추천하다","nominate a candidate","후보를 지명하다"],
+ ["numerous","형용사","수많은","numerous complaints","수많은 불만"],
+ ["objective","명사·형용사","목표; 객관적인","meet the objective","목표를 달성하다"],
+ ["obligation","명사","의무","a legal obligation","법적 의무"],
+ ["occupy","동사","차지하다, 점유하다","occupy the top floor","맨 위층을 사용하다"],
+ ["occur","동사","발생하다","Errors rarely occur.","오류는 드물게 발생한다."],
+ ["outstanding","형용사","뛰어난; 미지불의","outstanding service","뛰어난 서비스"],
+ ["overall","형용사·부사","전반적인(으로)","overall performance","전반적인 성과"],
+ ["oversee","동사","감독하다","oversee the project","프로젝트를 감독하다"],
+ ["participant","명사","참가자","survey participants","설문 참가자"],
+ ["particular","형용사","특정한, 특별한","in this particular case","이 특정 경우에"],
+ ["permanent","형용사","영구적인, 정규의","a permanent position","정규직"],
+ ["persuade","동사","설득하다","persuade the client","고객을 설득하다"],
+ ["pharmacy","명사","약국","the nearest pharmacy","가장 가까운 약국"],
+ ["portion","명사","부분, 일부","a large portion","큰 부분"],
+ ["potential","명사·형용사","잠재력; 잠재적인","a potential client","잠재 고객"],
+ ["praise","동사·명사","칭찬(하다)","praise the team","팀을 칭찬하다"],
+ ["precise","형용사","정확한, 정밀한","precise measurements","정밀한 측정"],
+ ["preliminary","형용사","예비의, 사전의","a preliminary report","예비 보고서"],
+ ["premises","명사","(사업체) 부지, 구내","on the premises","구내에서"],
+ ["prior","형용사","이전의, 우선하는","prior experience","이전 경험"],
+ ["prohibit","동사","금지하다","Smoking is prohibited.","흡연은 금지되어 있다."],
+ ["prominent","형용사","저명한, 두드러진","a prominent speaker","저명한 연사"],
+ ["prompt","형용사·동사","신속한; 유도하다","a prompt reply","신속한 답변"],
+ ["proof","명사","증거, 증명","proof of purchase","구매 증빙"],
+ ["pursue","동사","추구하다, 밀고 나가다","pursue a career","경력을 쌓아가다"],
+ ["recipient","명사","수령인, 수취인","the recipient of the award","수상자"],
+ ["reflect","동사","반영하다, 반사하다","The price reflects quality.","가격이 품질을 반영한다."],
+ ["refreshment","명사","다과, 간단한 음식","free refreshments","무료 다과"],
+ ["regarding","전치사","~에 관하여","regarding your order","귀하의 주문에 관하여"],
+ ["registration","명사","등록","online registration","온라인 등록"],
+ ["regulation","명사","규정, 규제","safety regulations","안전 규정"],
+ ["reimburse","동사","(비용을) 환급하다","reimburse travel costs","출장비를 환급하다"],
+ ["release","동사·명사","출시하다; 발표","release a new model","새 모델을 출시하다"],
+ ["relevant","형용사","관련된, 적절한","relevant experience","관련 경력"],
+ ["remainder","명사","나머지","the remainder of the budget","예산의 나머지"],
+ ["remarkable","형용사","놀라운, 주목할 만한","remarkable growth","놀라운 성장"],
+ ["remittance","명사","송금(액)","send a remittance","송금하다"],
+ ["renowned","형용사","유명한, 명성 있는","a renowned chef","유명한 요리사"],
+ ["represent","동사","대표하다, 나타내다","represent the company","회사를 대표하다"],
+ ["reputable","형용사","평판이 좋은","a reputable firm","평판 좋은 회사"],
+ ["retain","동사","유지하다, 보유하다","retain customers","고객을 유지하다"],
+ ["rigorous","형용사","엄격한, 철저한","rigorous testing","철저한 테스트"],
+ ["sample","명사·동사","견본; 시식/시험하다","a free sample","무료 견본"],
+ ["scenario","명사","시나리오, 상황","a worst-case scenario","최악의 시나리오"],
+ ["session","명사","시간, 회기","a training session","교육 시간"],
+ ["severe","형용사","심각한, 혹독한","severe weather","혹독한 날씨"],
+ ["shortage","명사","부족","a labor shortage","인력 부족"],
+ ["simultaneously","부사","동시에","run two tasks simultaneously","두 작업을 동시에 실행하다"],
+ ["skilled","형용사","숙련된","a skilled worker","숙련된 근로자"],
+ ["spacious","형용사","넓은","a spacious office","넓은 사무실"],
+ ["specific","형용사","구체적인, 특정한","specific instructions","구체적인 지시"],
+ ["sponsor","명사·동사","후원자; 후원하다","sponsor the event","행사를 후원하다"],
+ ["stable","형용사","안정적인","a stable income","안정적인 수입"],
+ ["streamline","동사","간소화하다, 효율화하다","streamline the process","절차를 간소화하다"],
+ ["subsequent","형용사","그 다음의, 이후의","subsequent meetings","이후의 회의들"],
+ ["substitute","명사·동사","대체(하다)","a substitute for sugar","설탕 대용품"],
+ ["surpass","동사","능가하다, 뛰어넘다","surpass the target","목표를 뛰어넘다"],
+ ["thorough","형용사","철저한","a thorough inspection","철저한 점검"],
+ ["tour","명사·동사","견학, 관광; 둘러보다","a factory tour","공장 견학"],
+ ["transition","명사","전환, 이행","a smooth transition","순조로운 전환"],
+ ["undergo","동사","겪다, 거치다","undergo renovation","보수 공사를 거치다"],
+ ["undertake","동사","착수하다, 맡다","undertake a project","프로젝트를 맡다"],
+ ["unanimous","형용사","만장일치의","a unanimous decision","만장일치의 결정"],
+ ["utilize","동사","활용하다","utilize resources","자원을 활용하다"],
+ ["vary","동사","다르다, 달라지다","Prices vary by region.","가격은 지역에 따라 다르다."],
+ ["venue","명사","(행사) 장소","the conference venue","회의 장소"],
+ ["verify","동사","확인하다, 입증하다","verify your identity","신원을 확인하다"],
+ ["versatile","형용사","다재다능한, 다용도의","a versatile tool","다용도 도구"],
+ ["via","전치사","~을 통해, ~을 경유하여","send it via email","이메일로 보내다"],
+ ["void","형용사·동사","무효의; 무효화하다","The warranty is void.","보증이 무효다."],
+ ["waive","동사","면제하다, 포기하다","waive the fee","수수료를 면제하다"],
+ ["widespread","형용사","널리 퍼진","widespread support","폭넓은 지지"],
+ ["withdraw","동사","인출하다, 철회하다","withdraw money","돈을 인출하다"],
+ ["yield","동사·명사","산출하다; 수익","yield high returns","높은 수익을 내다"]
+];
+TOEIC_SAMPLE.push(..._MORE2.map(t=>({word:t[0],pos:t[1],meaning:t[2],example:t[3],exampleKo:t[4]})));
+
 /* ================= basic offline dictionary (일기 기초 단어) ================= */
 const _BASIC=[
  ["hello","감탄사","안녕(만났을 때 인사)","Hello, nice to meet you.","안녕하세요, 만나서 반가워요."],
@@ -1217,11 +1420,10 @@ function makeQuestions(){
     const d=testCfg.dir==="mix"?(Math.random()<.5?"en2ko":"ko2en"):testCfg.dir;
     const key=d==="en2ko"?"meaning":"word";
     const prompt=d==="en2ko"?it.word:it.meaning;
-    const correct=it[key];
-    const seen=new Set([correct]);const dis=[];const others=distract.filter(x=>x!==it);shuffle(others);
-    for(const o of others){const val=o[key];if(val&&!seen.has(val)){seen.add(val);dis.push(val);}if(dis.length>=3)break;}
-    const opts=shuffle([correct,...dis]);
-    return {d,prompt,options:opts,answer:opts.indexOf(correct),word:it.word,meaning:it.meaning};
+    const seenVal=new Set([it[key]]);const disItems=[];const others=distract.filter(x=>x!==it);shuffle(others);
+    for(const o of others){const val=o[key];if(val&&!seenVal.has(val)){seenVal.add(val);disItems.push(o);}if(disItems.length>=3)break;}
+    const optItems=shuffle([it,...disItems]);
+    return {d,prompt,options:optItems.map(o=>o[key]),optItems,answer:optItems.indexOf(it),word:it.word,meaning:it.meaning};
   });
 }
 function openVocabTest(){
@@ -1258,11 +1460,20 @@ function renderTest(){
 }
 function testCard(q,i){
   const ans=testState.answers[i];const answered=ans!=null;
-  const opts=q.options.map((o,oi)=>{let cls="opt";if(answered){if(oi===q.answer)cls+=" correct";else if(oi===ans)cls+=" wrong";}
-    return `<button class="${cls}" ${answered?"disabled":""} data-tq="${i}" data-to="${oi}"><span class="k">${String.fromCharCode(65+oi)}</span><span>${esc(o)}</span></button>`;}).join("");
+  const opts=q.options.map((o,oi)=>{
+    let cls="opt";if(answered){if(oi===q.answer)cls+=" correct";else if(oi===ans)cls+=" wrong";}
+    const it=q.optItems&&q.optItems[oi];
+    const already=it&&DB.vocab.some(v=>(v.word||"").toLowerCase()===(it.word||"").toLowerCase());
+    const rev=(answered&&it)?`<div class="optinfo">
+        <div class="oi-head"><span class="oi-w serif">${esc(it.word)}</span><span class="oi-p">${esc(it.pos||"")}</span><span class="oi-m">${esc(it.meaning||"")}</span></div>
+        ${it.example?`<div class="oi-ex">“${esc(it.example)}”${it.exampleKo?` — ${esc(it.exampleKo)}`:""}</div>`:""}
+        <button class="optadd ${already?"added":""}" ${already?"disabled":""} data-addopt="${i}:${oi}">${already?"✓ 단어장에 있음":"＋ 단어장에 추가"}</button>
+      </div>`:"";
+    return `<button class="${cls}" ${answered?"disabled":""} data-tq="${i}" data-to="${oi}"><span class="k">${String.fromCharCode(65+oi)}</span><span>${esc(o)}</span></button>${rev}`;
+  }).join("");
   const label=q.d==="en2ko"?"알맞은 뜻을 고르세요":"알맞은 영어 단어를 고르세요";
   return `<div class="qcard"><div class="q"><span style="font-size:11px;color:var(--muted);font-weight:700">${label}</span><br><span class="serif" style="font-size:23px">${esc(q.prompt)}</span></div>${opts}
-    ${answered?`<div class="qexp"><b>${ans===q.answer?"정답!":"오답"}</b> ${esc(q.word)} = ${esc(q.meaning)}</div>`:""}</div>`;
+    ${answered?`<div class="qexp"><b>${ans===q.answer?"정답!":"오답"}</b> 정답: ${esc(q.word)} = ${esc(q.meaning)}</div>`:""}</div>`;
 }
 
 /* ================= CSV export / import ================= */
