@@ -243,6 +243,10 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 .study-guide ul{margin:0;padding-left:17px}
 .study-guide li{font-size:13px;color:var(--muted);line-height:1.7}
 .study-guide li b{color:var(--ink)}
+.learnstat{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 4px}
+.learnstat .ls{background:var(--surface-2);border-radius:12px;padding:11px 6px;text-align:center}
+.learnstat .ls b{display:block;font-size:21px;font-weight:700;color:var(--brand);font-family:var(--font-serif);line-height:1.1}
+.learnstat .ls span{font-size:11px;color:var(--muted);font-weight:600}
 .study-wrap{display:flex;flex-direction:column;min-height:calc(100vh - 220px)}
 .study-head{display:flex;justify-content:space-between;align-items:center;margin:8px 2px 0;font-size:12.5px;color:var(--muted);font-weight:700}
 .study-head .cnt{color:var(--brand)}
@@ -313,7 +317,7 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 <script>
 "use strict";
 /* ---------------- capability: sample (AI) ---------------- */
-const APP_VERSION="2026-09-11-study2";
+const APP_VERSION="2026-09-11-study3";
 let SAMPLE=null;
 (async()=>{ try{ if(window.claude&&claude.use){ SAMPLE=await claude.use("sample"); } }catch(e){} if(curTab==="today")renderToday(); })();
 function getApiKey(){try{return (localStorage.getItem("endiary.apikey")||"").trim();}catch(e){return"";}}
@@ -796,9 +800,16 @@ function renderCollection(){
   view.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{collTab=b.dataset.ct;renderCollection();});
   const body=$("#collBody");
   if(collTab==="vocab"){
+    const st=learnStats();
     body.innerHTML=`
       <div class="rowbtns">
         <button class="btn primary" id="startTest">단어 학습 시작</button>
+      </div>
+      <div class="learnstat">
+        <div class="ls"><b>${st.total}</b><span>총 단어</span></div>
+        <div class="ls"><b>${st.c1}</b><span>1회독</span></div>
+        <div class="ls"><b>${st.c2}</b><span>2회독</span></div>
+        <div class="ls"><b>${st.c3}</b><span>3회독+</span></div>
       </div>`+
       (v.length? v.map((x,i)=>`
       <div class="listitem">
@@ -1449,6 +1460,13 @@ function buildStudyQueue(){
   return pool.slice(0,n);
 }
 function nextDir(){ return Math.random()<0.5?"en2ko":"ko2en"; }
+function learnStats(){
+  const pool=DB.vocab.concat(TOEIC_SAMPLE).filter(x=>x.word&&x.meaning);
+  const seen=new Set(); let total=0,c1=0,c2=0,c3=0,studied=0;
+  for(const x of pool){ const k=x.word.toLowerCase(); if(seen.has(k))continue; seen.add(k); total++;
+    const c=studyCountOf(x.word); if(c>=1)studied++; if(c===1)c1++; else if(c===2)c2++; else if(c>=3)c3++; }
+  return {total,c1,c2,c3,studied};
+}
 function openVocabTest(){
   if(DB.vocab.length<1 && studyCfg.source==="mine")studyCfg.source="all";
   editorActive=false; setChrome({title:"단어 학습",back:true,backTo:"collection"});
@@ -1469,7 +1487,7 @@ function renderStudySetup(){
     <div class="study-guide">
       <div class="t">이렇게 학습해요</div>
       <ul>
-        <li><b>영↔한 무작위</b>로 출제돼요. 뜻/단어·예문 버튼으로 답을 확인해요.</li>
+        <li><b>영↔한 무작위</b>로 출제돼요. <b>보기</b>를 누르면 답과 예문이 함께 나타나요.</li>
         <li><b>알고있음</b> — 외운 걸로 보고 그 단어의 누적 횟수를 +1 해요.</li>
         <li><b>공부하겠음</b> — 이번 세션 맨 끝에 다시 나와요(회독 ↑).</li>
         <li>누적 횟수가 낮은 단어부터, 순서는 무작위로 출제돼요.</li>
@@ -1480,7 +1498,7 @@ function renderStudySetup(){
   $("#startStudy").onclick=()=>{
     const q=buildStudyQueue();
     if(!q.length){toast("학습할 단어가 없어요");return;}
-    studyState={queue:q,total:q.length,done:0,known:0,dir:nextDir(),reveal:{m:false,e:false}};
+    studyState={queue:q,total:q.length,done:0,known:0,dir:nextDir(),shown:false};
     renderStudy(); view.scrollTop=0;
   };
 }
@@ -1488,37 +1506,33 @@ function renderStudy(){
   if(!studyState){renderStudySetup();return;}
   const q=studyState.queue;
   if(!q.length){ renderStudyDone(); return; }
-  const cur=q[0], rv=studyState.reveal, cnt=studyCountOf(cur.word);
+  const cur=q[0], shown=studyState.shown, cnt=studyCountOf(cur.word);
   const dir=studyState.dir||"en2ko", isEn=dir==="en2ko";
   const progress=Math.round((studyState.done/Math.max(1,studyState.total))*100);
   const promptMain=isEn?esc(cur.word):esc(cur.meaning||"");
   const promptPos=(isEn&&cur.pos)?`<span class="pos">${esc(cur.pos)}</span>`:"";
   const topContent=isEn?esc(cur.meaning||""):`${esc(cur.word)}${cur.pos?` <span style="font-size:14px;color:var(--muted);font-weight:600">${esc(cur.pos)}</span>`:""}`;
-  const revealLabel=isEn?"뜻":"단어";
   view.innerHTML=`
     <div class="study-wrap">
       <div class="study-head">
         <span>남은 <span class="cnt">${q.length}</span>개 · 세션 ${studyState.total}개</span>
-        <span>${isEn?"영→한":"한→영"} · 누적 ${cnt}회 · <a id="toSetup">설정</a></span>
+        <span>${isEn?"영→한":"한→영"} · 누적 ${cnt}회</span>
       </div>
       <div class="study-prog"><span style="width:${progress}%"></span></div>
       <div class="study-card">
-        <div class="study-mean" style="${rv.m?"":"visibility:hidden"}">${rv.m?topContent:"·"}</div>
+        <div class="study-mean" style="${shown?"":"visibility:hidden"}">${shown?topContent:"·"}</div>
         <div class="study-word">${promptMain}${promptPos}</div>
-        <div class="study-ex" style="${rv.e?"":"visibility:hidden"}">${cur.example?`“${esc(cur.example)}”${cur.exampleKo?`<span class="ko">${esc(cur.exampleKo)}</span>`:""}`:"(예문이 없어요)"}</div>
+        <div class="study-ex" style="${shown?"":"visibility:hidden"}">${cur.example?`“${esc(cur.example)}”${cur.exampleKo?`<span class="ko">${esc(cur.exampleKo)}</span>`:""}`:"(예문이 없어요)"}</div>
       </div>
     </div>
     <div class="studybar"><div class="grid">
-      <button class="sbtn reveal ${rv.m?"on":""}" id="sbMean">${revealLabel}<small>${rv.m?"숨기기":"보기"}</small></button>
-      <button class="sbtn reveal ${rv.e?"on":""}" id="sbEx">예문<small>${rv.e?"숨기기":"보기"}</small></button>
+      <button class="sbtn reveal ${shown?"on":""}" id="sbShow" style="grid-column:1/-1">${shown?"가리기":"보기"}<small>${shown?"답·예문 숨기기":"답·예문 보기"}</small></button>
       <button class="sbtn study" id="sbStudy">공부하겠음<small>세션 끝에 다시</small></button>
       <button class="sbtn know" id="sbKnow">알고있음<small>누적 +1</small></button>
     </div></div>`;
-  $("#sbMean").onclick=()=>{ studyState.reveal.m=!studyState.reveal.m; renderStudy(); };
-  $("#sbEx").onclick=()=>{ studyState.reveal.e=!studyState.reveal.e; renderStudy(); };
-  $("#sbStudy").onclick=()=>{ const c=studyState.queue.shift(); studyState.queue.push(c); studyState.dir=nextDir(); studyState.reveal={m:false,e:false}; renderStudy(); view.scrollTop=0; };
-  $("#sbKnow").onclick=()=>{ const c=studyState.queue.shift(); bumpStudy(c.word); studyState.done++; studyState.known++; studyState.dir=nextDir(); studyState.reveal={m:false,e:false}; renderStudy(); view.scrollTop=0; };
-  $("#toSetup").onclick=()=>{ renderStudySetup(); view.scrollTop=0; };
+  $("#sbShow").onclick=()=>{ studyState.shown=!studyState.shown; renderStudy(); };
+  $("#sbStudy").onclick=()=>{ const c=studyState.queue.shift(); studyState.queue.push(c); studyState.dir=nextDir(); studyState.shown=false; renderStudy(); view.scrollTop=0; };
+  $("#sbKnow").onclick=()=>{ const c=studyState.queue.shift(); bumpStudy(c.word); studyState.done++; studyState.known++; studyState.dir=nextDir(); studyState.shown=false; renderStudy(); view.scrollTop=0; };
 }
 function renderStudyDone(){
   const t=studyState?studyState.total:0, k=studyState?studyState.known:0;
@@ -1532,7 +1546,7 @@ function renderStudyDone(){
         <button class="btn ghost" id="againSetup">설정 바꾸기</button>
       </div>
     </div>`;
-  $("#againNew").onclick=()=>{ const nq=buildStudyQueue(); if(!nq.length){toast("학습할 단어가 없어요");return;} studyState={queue:nq,total:nq.length,done:0,known:0,dir:nextDir(),reveal:{m:false,e:false}}; renderStudy(); view.scrollTop=0; };
+  $("#againNew").onclick=()=>{ const nq=buildStudyQueue(); if(!nq.length){toast("학습할 단어가 없어요");return;} studyState={queue:nq,total:nq.length,done:0,known:0,dir:nextDir(),shown:false}; renderStudy(); view.scrollTop=0; };
   $("#againSetup").onclick=()=>{ renderStudySetup(); view.scrollTop=0; };
 }
 
