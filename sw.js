@@ -1,5 +1,5 @@
 /* English Diary service worker — offline app shell */
-const CACHE = "endiary-2026-09-11-study3";
+const CACHE = "endiary-2026-09-11-voca723";
 const SHELL = [
   "./",
   "./index.html",
