@@ -158,6 +158,11 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 .cell .dot{width:5px;height:5px;border-radius:50%;background:var(--brand)}
 .cell .dot.checked{background:var(--ins)}
 .cell.sun{color:var(--del)}
+.cell.tap{cursor:pointer}
+.cell.tap:active{transform:scale(.94)}
+.cell.tap:not(.has){border:1px dashed var(--line)}
+.cell.tap:not(.has):active{background:var(--surface-2)}
+.cell.future{color:var(--muted);opacity:.38}
 
 /* reader / lists */
 .reader .rtext{font-family:var(--font-serif);font-size:17px;line-height:1.85;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px;margin-top:12px;white-space:pre-wrap;word-break:break-word}
@@ -264,7 +269,7 @@ textarea.entry::placeholder{color:var(--muted);opacity:.7}
 <script>
 "use strict";
 /* ---------------- capability: sample (AI) ---------------- */
-const APP_VERSION="2026-09-10-groq4";
+const APP_VERSION="2026-09-11-editpast";
 let SAMPLE=null;
 (async()=>{ try{ if(window.claude&&claude.use){ SAMPLE=await claude.use("sample"); } }catch(e){} if(curTab==="today")renderToday(); })();
 function getApiKey(){try{return (localStorage.getItem("endiary.apikey")||"").trim();}catch(e){return"";}}
@@ -440,23 +445,37 @@ Context: "${(ctx||"").slice(0,200)}"`;
   throw {code:"no_ai"};
 }
 
-/* ---------------- TODAY ---------------- */
+/* ---------------- ENTRY EDITOR (오늘 + 과거 날짜) ---------------- */
 function getEntry(k){return DB.entries[k];}
-function renderToday(){
-  curTab="today"; curEntryKey=TODAY_KEY; setChrome({title:"오늘",back:false});
-  const d=new Date();
-  const e=getEntry(TODAY_KEY)||{};
-  const checked=!!e.corrected;
+let editorActive=false;
+
+/* '오늘' 탭 */
+function renderToday(){ openEditor(TODAY_KEY,{tab:true}); }
+
+/* 임의의 날짜(오늘 또는 과거)를 쓰거나 고치는 편집 화면 */
+function openEditor(key,opts){
+  opts=opts||{};
+  if(key>TODAY_KEY){ toast("아직 오지 않은 날이에요."); return; }   // 미래 날짜 방지
+  editorActive=true; resultKey=null; curEntryKey=key;
+  const isToday=(key===TODAY_KEY);
+  const asTab=!!opts.tab;                 // 하단 '오늘' 탭으로 들어온 경우
+  if(asTab) curTab="today";
+  const d=parseKey(key);
+  const e=getEntry(key)||{};
+  if(asTab) setChrome({title:"오늘",back:false});
+  else      setChrome({title:`${d.getMonth()+1}월 ${d.getDate()}일 (${DOW_KO[d.getDay()]})`,back:true,backTo:"calendar"});
+  const dateLine=`${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${DOW_KO[d.getDay()]})`;
   view.innerHTML=`
     <div class="daymark">
       <div class="dow serif">${DOW_EN[d.getDay()]}</div>
-      <div class="date">${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${DOW_KO[d.getDay()]})</div>
+      <div class="date">${dateLine}${isToday?"":' · <span style="color:var(--brand);font-weight:600">지난 일기</span>'}</div>
     </div>
-    <div class="prompt">How was your day? Write freely in English.</div>
+    <div class="prompt">${isToday?"How was your day? Write freely in English.":"그날을 떠올리며 영어로 적어 보세요."}</div>
     <div class="paper">
-      <textarea class="entry" id="entry" placeholder="Today I ...">${esc(e.text||"")}</textarea>
+      <textarea class="entry" id="entry" placeholder="${isToday?"Today I ...":"On that day I ..."}">${esc(e.text||"")}</textarea>
       <div class="entry-foot"><span id="wc">0 단어</span><span id="savestate"></span></div>
     </div>
+    ${e.corrected?`<div class="rowbtns"><button class="btn ghost" id="openReadBtn">읽기·단어 저장 모드</button></div>`:""}
     ${!aiOn()?`<div class="notice">AI 교정·사전을 쓰려면 이 링크를 <b>claude.ai</b>에서 열거나, <b>수집 → 데이터 → AI 설정</b>에서 API 키를 입력하세요. (글쓰기·저장·단어 시험은 지금도 됩니다.)</div>`:""}
   `;
   const ta=$("#entry");
@@ -467,20 +486,22 @@ function renderToday(){
     upd();
     $("#savestate").textContent="…";
     clearTimeout(svT);svT=setTimeout(()=>{
-      const cur=getEntry(TODAY_KEY)||{};
-      cur.text=ta.value; cur.updatedAt=Date.now();
-      if(ta.value.trim()==="" && !cur.corrected) delete DB.entries[TODAY_KEY]; else DB.entries[TODAY_KEY]=cur;
+      const cur=getEntry(key)||{};
+      cur.text=ta.value; cur.updatedAt=Date.now(); if(!cur.date)cur.date=key;
+      if(ta.value.trim()==="" && !cur.corrected) delete DB.entries[key]; else DB.entries[key]=cur;
       saveDB();
       $("#savestate").innerHTML='<span class="saved-dot">✓ 저장됨</span>';
       renderCTA();
     },500);
   });
+  const orb=$("#openReadBtn"); if(orb) orb.onclick=()=>openReader(key);
   renderCTA();
+  view.scrollTop=0;
 }
 function renderCTA(){
   const row=$("#ctaRow"),inner=$("#ctaInner");
-  if(curTab!=="today"){row.style.display="none";return;}
-  const e=getEntry(TODAY_KEY)||{};
+  if(!editorActive){row.style.display="none";return;}
+  const e=getEntry(curEntryKey)||{};
   const hasText=(e.text||$("#entry")?.value||"").trim().length>0;
   const checked=!!e.corrected;
   row.style.display=hasText?"flex":"none";
@@ -491,6 +512,7 @@ function renderCTA(){
 
 async function doCheck(){
   const ta=$("#entry"); if(!ta)return;
+  const key=curEntryKey;
   const text=ta.value.trim();
   if(text.length<3){toast("조금 더 써 주세요.");return;}
   if(!aiOn()){toast("AI 교정을 사용할 수 없어요.");return;}
@@ -498,13 +520,13 @@ async function doCheck(){
   try{
     const best=await aiCheckBest(text);
     const r=best.r;
-    const e=getEntry(TODAY_KEY)||{};
-    e.text=text; e.corrected=r.corrected||text; e.source=best.name||"";
+    const e=getEntry(key)||{};
+    e.text=text; e.corrected=r.corrected||text; e.source=best.name||""; if(!e.date)e.date=key;
     e.corrections=(Array.isArray(r.corrections)?r.corrections:[]).filter(c=>c&&c.original&&c.corrected&&!isMinorFix(c.original,c.corrected));
     e.quiz=Array.isArray(r.quiz)?r.quiz:[];
     e.quizState={}; e.checkedAt=Date.now();
-    DB.entries[TODAY_KEY]=e; saveDB();
-    hideLoader(); openResult(TODAY_KEY);
+    DB.entries[key]=e; saveDB();
+    hideLoader(); openResult(key);
   }catch(err){
     hideLoader();
     let m="검사에 실패했어요.";
@@ -525,6 +547,7 @@ async function doCheck(){
 /* ---------------- RESULT ---------------- */
 let resultKey=null;
 function openResult(k){
+  editorActive=false;
   resultKey=k; resultTab="compare";
   const past=k!==TODAY_KEY;
   setChrome({title:"검사 결과",back:true,backTo:past?"reader:"+k:"today"});
@@ -648,7 +671,7 @@ function addSentence(s){
 
 /* ---------------- CALENDAR ---------------- */
 function renderCalendar(){
-  curTab="calendar"; setChrome({title:"달력",back:false});
+  curTab="calendar"; editorActive=false; setChrome({title:"달력",back:false});
   $("#ctaRow").style.display="none";
   const y=calMonth.getFullYear(),m=calMonth.getMonth();
   const first=new Date(y,m,1), start=first.getDay(), days=new Date(y,m+1,0).getDate();
@@ -657,7 +680,13 @@ function renderCalendar(){
   for(let d=1;d<=days;d++){
     const k=keyOf(new Date(y,m,d));const e=DB.entries[k];const dow=new Date(y,m,d).getDay();
     const has=!!(e&&(e.text||"").trim());
-    cells+=`<div class="cell ${has?"has":""} ${k===TODAY_KEY?"today":""} ${dow===0?"sun":""}" data-day="${k}" ${has?"":"style='pointer-events:none'"}>
+    const future=k>TODAY_KEY;
+    const cls=["cell"];
+    if(has)cls.push("has");
+    if(k===TODAY_KEY)cls.push("today");
+    if(dow===0)cls.push("sun");
+    if(future)cls.push("future"); else cls.push("tap");
+    cells+=`<div class="${cls.join(" ")}" data-day="${k}" ${future?"style='pointer-events:none'":""}>
       <span>${d}</span>${has?`<span class="dot ${e.corrected?"checked":""}"></span>`:""}</div>`;
   }
   const dows=DOW_KO.map((d,i)=>`<div class="dowh ${i===0?"sun":""}">${d}</div>`).join("");
@@ -669,16 +698,20 @@ function renderCalendar(){
     </div>
     <div class="grid7">${dows}</div>
     <div class="grid7" style="margin-top:2px">${cells}</div>
-    <div style="text-align:center;color:var(--muted);font-size:12.5px;margin-top:18px">지금까지 ${cnt}일 기록 · 초록 점은 검사 완료</div>`;
+    <div style="text-align:center;color:var(--muted);font-size:12.5px;margin-top:18px">지금까지 ${cnt}일 기록 · 초록 점은 검사 완료<br>날짜를 눌러 그날의 일기를 새로 쓰거나 고칠 수 있어요</div>`;
   $("#pm").onclick=()=>{calMonth=new Date(y,m-1,1);renderCalendar();};
   $("#nm").onclick=()=>{calMonth=new Date(y,m+1,1);renderCalendar();};
   $("#tm").onclick=()=>{calMonth=new Date();renderCalendar();};
-  view.querySelectorAll(".cell.has").forEach(c=>c.onclick=()=>openReader(c.dataset.day));
+  view.querySelectorAll(".cell.tap").forEach(c=>c.onclick=()=>{
+    const k=c.dataset.day, e=DB.entries[k];
+    if(e && e.corrected) openReader(k);   // 검사까지 끝난 날 → 읽기(거기서 수정 가능)
+    else openEditor(k);                    // 빈 날/미검사 → 바로 쓰기·이어쓰기
+  });
 }
 
 /* ---------------- READER (past entry) ---------------- */
 function openReader(k){
-  curEntryKey=k; resultKey=null;
+  curEntryKey=k; resultKey=null; editorActive=false;
   const e=DB.entries[k]; if(!e)return;
   const d=parseKey(k);
   setChrome({title:`${d.getMonth()+1}.${d.getDate()} (${DOW_KO[d.getDay()]})`,back:true,backTo:"calendar"});
@@ -695,17 +728,19 @@ function openReader(k){
         ${corr.length?`<div class="section-title">고친 부분 (${corr.length})</div>${corr.map((c,i)=>correctionCard(c,i)).join("")}`:""}
       `:`<div class="notice" style="margin-top:14px">아직 검사하지 않은 글이에요.</div>`}
       <div class="cta-row" style="position:static;padding:8px 0 0"><div class="inner">
+        <button class="btn primary" id="editEntry">수정하기</button>
         ${e.corrected?`<button class="btn ghost" id="openRes">퀴즈·비교 결과 보기</button>`:""}
       </div></div>
       <div style="height:16px"></div>
     </div>`;
   bindWordTaps(view);
+  if($("#editEntry"))$("#editEntry").onclick=()=>openEditor(k);
   if($("#openRes"))$("#openRes").onclick=()=>openResult(k);
 }
 
 /* ---------------- COLLECTION ---------------- */
 function renderCollection(){
-  curTab="collection"; setChrome({title:"수집",back:false,action:{label:"데이터",fn:openDataSheet}});
+  curTab="collection"; editorActive=false; setChrome({title:"수집",back:false,action:{label:"데이터",fn:openDataSheet}});
   $("#ctaRow").style.display="none";
   const v=DB.vocab,s=DB.sentences;
   view.innerHTML=`
@@ -782,7 +817,7 @@ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
 /* global click delegation for dynamic buttons */
 document.addEventListener("click",e=>{
   const cb=e.target.closest("#checkBtn"); if(cb){doCheck();return;}
-  const sr=e.target.closest("#seeResult"); if(sr){openResult(TODAY_KEY);return;}
+  const sr=e.target.closest("#seeResult"); if(sr){openResult(curEntryKey);return;}
   const opt=e.target.closest(".opt[data-q]"); if(opt&&!opt.disabled){
     const qi=+opt.dataset.q, oi=+opt.dataset.o, e2=getEntry(resultKey);
     if(e2&&e2.quiz){ e2.quizState=e2.quizState||{}; if(e2.quizState[qi]==null){ e2.quizState[qi]=oi; saveDB(); const st=view.scrollTop; renderResult(); view.scrollTop=st; } }
@@ -1191,7 +1226,7 @@ function makeQuestions(){
 }
 function openVocabTest(){
   if(DB.vocab.length<4 && testCfg.source==="mine")testCfg.source="all";
-  setChrome({title:"단어 시험",back:true,backTo:"collection"});
+  editorActive=false; setChrome({title:"단어 시험",back:true,backTo:"collection"});
   $("#ctaRow").style.display="none";
   regenTest(); view.scrollTop=0;
 }
